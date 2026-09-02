@@ -1,0 +1,28 @@
+{
+  "name": "@usebruno/runner",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Bruno on-prem platform runner agent — claims queued runs from the backend and executes them with the Bruno CLI",
+  "main": "src/index.js",
+  "bin": {
+    "bruno-runner": "./bin/bruno-runner.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "readme.md",
+    "package.json"
+  ],
+  "scripts": {
+    "test": "node --experimental-vm-modules $(npx which jest)",
+    "test:ci": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js"
+  },
+  "dependencies": {
+    "@usebruno/cli": "1.16.0",
+    "chalk": "^4.1.2",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
