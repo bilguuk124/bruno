@@ -58,6 +58,18 @@ class ApiClient {
   complete(runId, { status, summary, artifacts }) {
     return this.#request('POST', `/runs/${runId}/complete`, { status, summary, artifacts });
   }
+
+  // --- used by `bruno-runner run` (CI), authenticated with a PAT ---
+
+  async createRun(body) {
+    const { body: run } = await this.#request('POST', '/runs', body);
+    return run;
+  }
+
+  async getRun(runId) {
+    const { body } = await this.#request('GET', `/runs/${runId}`);
+    return body;
+  }
 }
 
 module.exports = { ApiClient };
