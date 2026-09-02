@@ -130,8 +130,12 @@ export default class BackendClient {
 
   // --- requests ---
 
-  createRequest(body) {
-    return this.post('/requests', body);
+  createRequest(collectionId, body) {
+    return this.post(`/collections/${collectionId}/requests`, body);
+  }
+
+  getRequest(requestId) {
+    return this.get(`/requests/${requestId}`);
   }
 
   updateRequest(requestId, patch, revision) {

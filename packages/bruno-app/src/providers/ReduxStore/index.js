@@ -18,12 +18,19 @@ import backendReducer from './slices/backend';
 import { draftDetectMiddleware } from './middlewares/draft/middleware';
 import { autosaveMiddleware } from './middlewares/autosave/middleware';
 import { snapshotMiddleware } from './middlewares/snapshot/middleware';
+import backendSyncMiddleware from './middlewares/backendSync/middleware';
 
 const isDevEnv = () => {
   return import.meta.env.MODE === 'development';
 };
 
-let middleware = [tasksMiddleware.middleware, draftDetectMiddleware, autosaveMiddleware, snapshotMiddleware];
+let middleware = [
+  tasksMiddleware.middleware,
+  backendSyncMiddleware.middleware,
+  draftDetectMiddleware,
+  autosaveMiddleware,
+  snapshotMiddleware
+];
 if (isDevEnv()) {
   middleware = [...middleware, debugMiddleware.middleware];
 }

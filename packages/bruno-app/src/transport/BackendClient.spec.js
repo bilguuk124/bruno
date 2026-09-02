@@ -35,8 +35,9 @@ it('sends the bearer token and parses JSON', async () => {
 
 it('serializes a JSON body and sets content-type', async () => {
   global.fetch.mockReturnValue(jsonResponse(201, { id: 'r1' }));
-  await client.createRequest({ name: 'x' });
-  const [, init] = global.fetch.mock.calls[0];
+  await client.createRequest('c1', { name: 'x' });
+  const [url, init] = global.fetch.mock.calls[0];
+  expect(url).toBe('https://n.example.com/api/v1/collections/c1/requests');
   expect(init.method).toBe('POST');
   expect(init.headers['Content-Type']).toBe('application/json');
   expect(JSON.parse(init.body)).toEqual({ name: 'x' });

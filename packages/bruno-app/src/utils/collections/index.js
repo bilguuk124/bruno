@@ -1899,8 +1899,10 @@ export const buildSidebarEntries = ({ collections = [], workspaces = [], activeW
   if (!activeWorkspace?.collections?.length) return [];
 
   const loadedByPath = new Map();
+  const loadedByUid = new Map();
   for (const c of collections) {
     if (isScratchCollection(c, workspaces)) continue;
+    if (c.uid) loadedByUid.set(c.uid, c);
     if (c.pathname) {
       let key = normalizePath(c.pathname);
       if (isWindowsOS()) key = key.toLowerCase();
@@ -1910,6 +1912,12 @@ export const buildSidebarEntries = ({ collections = [], workspaces = [], activeW
 
   const entries = [];
   for (const wc of activeWorkspace.collections) {
+    // Team workspaces track collections by uid (no filesystem path).
+    if (wc.uid && !wc.path) {
+      const loaded = loadedByUid.get(wc.uid);
+      if (loaded) entries.push({ kind: 'loaded', collection: loaded, key: loaded.uid });
+      continue;
+    }
     if (!wc.path) continue;
     let key = normalizePath(wc.path);
     if (isWindowsOS()) key = key.toLowerCase();

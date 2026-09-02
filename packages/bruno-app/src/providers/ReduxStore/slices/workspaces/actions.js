@@ -10,6 +10,7 @@ import {
 } from '../workspaces';
 import { createCollection, openMultipleCollections, openScratchCollectionEvent, mountCollection, hydrateCollectionWithUiStateSnapshot } from '../collections/actions';
 import { removeCollection, addTransientDirectory, updateCollectionMountStatus, expandCollection, sortCollections } from '../collections';
+import { isTeamUid, switchToTeamWorkspace } from '../backend';
 import { sanitizeName } from 'utils/common/regex';
 import { clearCollectionState } from '../openapi-sync';
 import { updateGlobalEnvironments } from '../global-environments';
@@ -546,6 +547,15 @@ export const switchWorkspace = (workspaceUid) => {
     clearSnapshotHydrationTimeout();
     dispatch(setSnapshotReady(false));
     dispatch(clearSnapshotHydrationSession());
+
+    // Team (backend) workspaces have no filesystem path; the rest of this thunk
+    // is all disk/watcher/snapshot work. Route them to the backend loader.
+    if (isTeamUid(workspaceUid)) {
+      await dispatch(switchToTeamWorkspace(workspaceUid));
+      dispatch(setSnapshotReady(true));
+      return;
+    }
+
     try {
       dispatch(setActiveWorkspace(workspaceUid));
 
