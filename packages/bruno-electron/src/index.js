@@ -75,7 +75,9 @@ const apiSpecWatcher = new ApiSpecWatcher();
 // Reference: https://content-security-policy.com/
 const contentSecurityPolicy = [
   'default-src \'self\'',
-  'connect-src \'self\'',
+  // The renderer's backend transport (REST + WebSocket) connects to a
+  // user-configured Newton backend on any host.
+  'connect-src \'self\' http: https: ws: wss:',
   'font-src \'self\' https: data:;',
   'frame-src data:',
   'script-src \'self\' data:',

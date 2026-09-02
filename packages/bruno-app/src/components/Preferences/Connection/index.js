@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import toast from 'react-hot-toast';
 import Button from 'ui/Button';
-import { connectAndLogin, logoutBackend, disconnectBackend } from 'providers/ReduxStore/slices/backend';
+import { connectAndAuthenticate, logoutBackend, disconnectBackend } from 'providers/ReduxStore/slices/backend';
 import StyledWrapper from './StyledWrapper';
 
 /**
@@ -13,7 +13,8 @@ const Connection = () => {
   const dispatch = useDispatch();
   const { status, baseUrl, user, error } = useSelector((state) => state.backend);
 
-  const [form, setForm] = useState({ baseUrl: baseUrl || '', email: '', password: '' });
+  const [form, setForm] = useState({ baseUrl: baseUrl || '', email: '', password: '', name: '' });
+  const [register, setRegister] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const connected = status === 'connected';
@@ -26,8 +27,8 @@ const Connection = () => {
       return;
     }
     setSubmitting(true);
-    dispatch(connectAndLogin(form))
-      .then(() => toast.success('Connected to backend'))
+    dispatch(connectAndAuthenticate({ ...form, register }))
+      .then(() => toast.success(register ? 'Account created — connected' : 'Connected to backend'))
       .catch((err) => toast.error(err.message || 'Could not connect'))
       .finally(() => setSubmitting(false));
   };
@@ -98,6 +99,18 @@ const Connection = () => {
               autoComplete="username"
             />
           </div>
+          {register ? (
+            <div>
+              <label htmlFor="backend-name">Name</label>
+              <input
+                id="backend-name"
+                className="block textbox w-full"
+                value={form.name}
+                onChange={set('name')}
+                autoComplete="name"
+              />
+            </div>
+          ) : null}
           <div>
             <label htmlFor="backend-password">Password</label>
             <input
@@ -111,7 +124,7 @@ const Connection = () => {
           </div>
           <div className="actions">
             <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? 'Connecting…' : 'Connect'}
+              {submitting ? 'Connecting…' : register ? 'Create account & connect' : 'Connect'}
             </Button>
             {baseUrl ? (
               <Button type="button" color="secondary" variant="outline" size="sm" onClick={handleDisconnect}>
@@ -119,6 +132,9 @@ const Connection = () => {
               </Button>
             ) : null}
           </div>
+          <button type="button" className="link-button" onClick={() => setRegister((v) => !v)}>
+            {register ? 'Have an account? Sign in' : "First time? Create an account"}
+          </button>
         </form>
       )}
     </StyledWrapper>

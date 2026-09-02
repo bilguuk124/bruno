@@ -107,16 +107,20 @@ export const initBackendConnection = () => async (dispatch) => {
 };
 
 /**
- * Point the app at `baseUrl` and log in. On success the token is persisted and
- * the app is in remote mode.
+ * Point the app at `baseUrl` and authenticate. `register: true` creates the
+ * account first (the backend allows this for the very first user always, and
+ * for anyone when BRUNO_OPEN_SIGNUP is on). On success the token is persisted
+ * and the app is in remote mode.
  */
-export const connectAndLogin
-  = ({ baseUrl, email, password }) =>
+export const connectAndAuthenticate
+  = ({ baseUrl, email, password, name, register }) =>
     async (dispatch) => {
       config.setBaseUrl(baseUrl);
       dispatch(backendStatusChanged({ status: 'connecting', error: null }));
       try {
-        const res = await transport.backend.login(email, password);
+        const res = register
+          ? await transport.backend.register(email, name || email, password)
+          : await transport.backend.login(email, password);
         config.setToken(res.token);
         let user = res.user;
         if (!user) {
@@ -131,6 +135,9 @@ export const connectAndLogin
         throw err;
       }
     };
+
+/** Back-compat alias — log in without registering. */
+export const connectAndLogin = (args) => connectAndAuthenticate({ ...args, register: false });
 
 /** Log out but keep the configured URL, so the login form stays pre-filled. */
 export const logoutBackend = () => async (dispatch, getState) => {
