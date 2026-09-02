@@ -11,11 +11,13 @@ import {
   IconZoomQuestion,
   IconSquareLetterB,
   IconDatabase,
-  IconCertificate
+  IconCertificate,
+  IconPlugConnected
 } from '@tabler/icons';
 
 import IconSparkles from 'components/Icons/IconSparkles';
 import Support from './Support';
+import Connection from './Connection';
 import General from './General';
 import Themes from './Themes';
 import Proxy from './ProxySettings';
@@ -47,6 +49,10 @@ const Preferences = () => {
     switch (tab) {
       case 'general': {
         return <General />;
+      }
+
+      case 'connection': {
+        return <Connection />;
       }
 
       case 'themes': {
@@ -94,6 +100,10 @@ const Preferences = () => {
           <div className={getTabClassname('general')} role="tab" onClick={() => setTab('general')}>
             <IconSettings size={16} strokeWidth={1.5} />
             General
+          </div>
+          <div className={getTabClassname('connection')} role="tab" onClick={() => setTab('connection')}>
+            <IconPlugConnected size={16} strokeWidth={1.5} />
+            Connection
           </div>
           <div className={getTabClassname('themes')} role="tab" onClick={() => setTab('themes')}>
             <IconPalette size={16} strokeWidth={1.5} />
