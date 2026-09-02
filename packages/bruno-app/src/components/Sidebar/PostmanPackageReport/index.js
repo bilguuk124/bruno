@@ -272,11 +272,11 @@ const PostmanPackageReport = ({ report, collectionPath, onClose }) => {
           <div className="pkg-section pkg-section-danger">
             <div className="pkg-section-head">
               <IconBan size={14} strokeWidth={1.75} />
-              <span className="pkg-section-title">Not supported in Bruno</span>
+              <span className="pkg-section-title">Not supported in Newton</span>
               <span className="pkg-section-count">{unsupported.length}</span>
             </div>
             <p className="pkg-section-help">
-              Postman-specific packages without a Bruno equivalent. Scripts that call these will
+              Postman-specific packages without an equivalent. Scripts that call these will
               fail at runtime.
             </p>
             <PackageList items={unsupported} />

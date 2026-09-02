@@ -23,7 +23,7 @@ const inputsConfig = [
   {
     key: 'state',
     label: 'State',
-    tooltip: 'If left empty, Bruno automatically generates a secure random value to help protect against CSRF attacks.'
+    tooltip: 'If left empty, Newton automatically generates a secure random value to help protect against CSRF attacks.'
   }
 ];
 

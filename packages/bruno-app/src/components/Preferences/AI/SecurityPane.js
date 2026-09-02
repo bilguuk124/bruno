@@ -223,7 +223,7 @@ const SecurityPane = ({
           <div className="flex flex-col gap-0.5">
             <span className="text-[12.5px] font-semibold">Custom redacted variables</span>
             <span className="security-sub text-[11px]">
-              Variable names whose values should always be masked when Bruno lists them for the model — for anything you want redacted besides values already flagged as <em>secret</em>.
+              Variable names whose values should always be masked when Newton lists them for the model — for anything you want redacted besides values already flagged as <em>secret</em>.
             </span>
           </div>
           <ChipListEditor

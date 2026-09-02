@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   IconFolder as IconFolderTabler,
-  IconGitFork,
+  IconFileText,
   IconLock,
   IconRocket
 } from '@tabler/icons';
@@ -14,14 +14,14 @@ const highlights = [
     desc: 'Collections are plain files on your disk. No cloud sync, no proprietary lock-in.'
   },
   {
-    icon: IconGitFork,
-    title: 'Git-friendly',
-    desc: 'Every request is a readable file. Commit, branch, review, and collaborate using the tools you already know.'
+    icon: IconFileText,
+    title: 'Plain-text collections',
+    desc: 'Every request is a readable file you can diff, review, and export at any time.'
   },
   {
     icon: IconLock,
-    title: 'Privacy-focused',
-    desc: 'No account, no login. Bruno works entirely offline, your API keys never leave your machine.'
+    title: 'Self-hosted',
+    desc: 'Your workspace runs on infrastructure you control — API keys and secrets never leave it.'
   },
   {
     icon: IconRocket,

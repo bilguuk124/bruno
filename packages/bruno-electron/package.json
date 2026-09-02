@@ -1,15 +1,15 @@
 {
   "version": "2.0.0",
-  "name": "bruno",
-  "description": "Opensource API Client for Exploring and Testing APIs",
-  "homepage": "https://www.usebruno.com",
+  "name": "newton",
+  "description": "Self-hosted API client for exploring and testing APIs",
+  "homepage": "https://github.com/bilguuk124/bruno",
   "repository": {
     "type": "git",
-    "url": "https://github.com/usebruno/bruno.git"
+    "url": "https://github.com/bilguuk124/bruno.git"
   },
   "private": true,
   "main": "src/index.js",
-  "author": "Anoop M D <anoop.md1421@gmail.com> (https://helloanoop.com/)",
+  "author": "Newton",
   "scripts": {
     "clean": "rimraf dist",
     "dev": "electron .",

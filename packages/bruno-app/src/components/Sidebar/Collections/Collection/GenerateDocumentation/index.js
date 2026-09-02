@@ -106,7 +106,7 @@ const GenerateDocumentation = ({ onClose, collectionUid }) => {
           tags: filterByTags ? docTags : { include: [], exclude: [] },
           collectionVersion: currentVersion,
           exportedAt: new Date().toISOString(),
-          exportedUsing: version ? `Bruno/${version}` : 'Bruno'
+          exportedUsing: version ? `Newton/${version}` : 'Newton'
         },
         { brunoToOpenCollection, dumpYaml: jsyaml.dump, escapeString: jsesc }
       );
@@ -190,7 +190,7 @@ const GenerateDocumentation = ({ onClose, collectionUid }) => {
               </div>
 
               <p className="note m-0">
-                The generated file loads Bruno's JavaScript and CSS files from a CDN, which requires an internet connection.
+                The generated file loads the API docs viewer's JavaScript and CSS from a CDN, which requires an internet connection.
               </p>
             </div>
           )}

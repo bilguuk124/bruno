@@ -753,7 +753,7 @@ const CreateMockServerModal = ({
               </>
             ) : (
               <div className="text-xs mt-2 opacity-70">
-                Bruno will pick the next available port automatically.
+                Newton will pick the next available port automatically.
               </div>
             )}
           </div>

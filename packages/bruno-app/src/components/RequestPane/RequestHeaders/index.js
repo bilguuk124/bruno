@@ -358,7 +358,7 @@ const RequestHeaders = ({ item, collection, addHeaderText }) => {
               && row.name
               && enabledDefaultHeaderNames.has(row.name.toLowerCase()) && (
               <ToolHint
-                text="Overrides Bruno's default header"
+                text="Overrides Newton's default header"
                 toolhintId={`request-header-conflict-${row.uid}`}
                 className="header-conflict-icon"
                 dataTestId={`request-header-conflict-${row.name.toLowerCase()}`}

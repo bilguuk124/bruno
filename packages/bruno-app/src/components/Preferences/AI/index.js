@@ -370,7 +370,7 @@ const AI = () => {
 
           {!formik.values.enabled && !statusError && (
             <div className="ai-empty-notice px-3.5 py-3 text-xs">
-              Bring your own API key. Bruno talks to providers directly, your keys never leave your machine.
+              Bring your own API key. Newton talks to providers directly, your keys never leave your machine.
             </div>
           )}
 
@@ -425,7 +425,7 @@ const AI = () => {
 
               {endpoints.length === 0 && (
                 <div className="ai-empty-notice px-3.5 py-3 text-xs">
-                  Point Bruno at any OpenAI-compatible API — Ollama, LM Studio, Together, Groq, OpenRouter, vLLM, and more.
+                  Point Newton at any OpenAI-compatible API — Ollama, LM Studio, Together, Groq, OpenRouter, vLLM, and more.
                 </div>
               )}
 

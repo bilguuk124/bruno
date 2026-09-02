@@ -144,7 +144,7 @@ describe('PostmanPackageReport', () => {
     renderModal({
       report: { ...baseReport, unsupported: ['postman-collection'] }
     });
-    expect(screen.getByText('Not supported in Bruno')).toBeInTheDocument();
+    expect(screen.getByText('Not supported in Newton')).toBeInTheDocument();
     expect(screen.getByText('postman-collection')).toBeInTheDocument();
   });
 

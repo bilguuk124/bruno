@@ -153,7 +153,7 @@ const CreateCollection = ({ onClose, defaultLocation: propDefaultLocation, initi
                 Location
                 <Help>
                   <p>
-                    Bruno stores your collections on your computer's filesystem.
+                    Newton stores your collections on your computer's filesystem.
                   </p>
                   <p className="mt-2">
                     Choose the location where you want to store this collection.
