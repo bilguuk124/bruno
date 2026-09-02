@@ -262,51 +262,6 @@ export const openWorkspaceDialog = () => {
   };
 };
 
-export const connectCollectionToGit = ({ workspaceUid, collectionPath, remoteUrl }) => {
-  return async (dispatch, getState) => {
-    try {
-      const workspace = getState().workspaces.workspaces.find((w) => w.uid === workspaceUid);
-      if (!workspace) {
-        throw new Error('Workspace not found');
-      }
-
-      await ipcRenderer.invoke(
-        'renderer:connect-collection-to-git',
-        workspace.pathname,
-        collectionPath,
-        remoteUrl
-      );
-
-      return true;
-    } catch (error) {
-      toast.error(error.message || 'Failed to connect Git remote');
-      throw error;
-    }
-  };
-};
-
-export const disconnectCollectionFromGit = ({ workspaceUid, collectionPath }) => {
-  return async (dispatch, getState) => {
-    try {
-      const workspace = getState().workspaces.workspaces.find((w) => w.uid === workspaceUid);
-      if (!workspace) {
-        throw new Error('Workspace not found');
-      }
-
-      await ipcRenderer.invoke(
-        'renderer:disconnect-collection-from-git',
-        workspace.pathname,
-        collectionPath
-      );
-
-      return true;
-    } catch (error) {
-      toast.error(error.message || 'Failed to remove Git remote');
-      throw error;
-    }
-  };
-};
-
 export const removeCollectionFromWorkspaceAction = (workspaceUid, collectionPath, options = {}) => {
   return async (dispatch, getState) => {
     try {

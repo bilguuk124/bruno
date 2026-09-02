@@ -8,7 +8,6 @@ import toast from 'react-hot-toast';
 import ImportCollection from 'components/Sidebar/ImportCollection';
 import ImportCollectionLocation from 'components/Sidebar/ImportCollectionLocation';
 import BulkImportCollectionLocation from 'components/Sidebar/BulkImportCollectionLocation';
-import CloneGitRepository from 'components/Sidebar/CloneGitRespository';
 import PostmanPackageReport from 'components/Sidebar/PostmanPackageReport';
 import usePostmanPackagePrompt from 'hooks/usePostmanPackagePrompt';
 import Button from 'ui/Button';
@@ -24,8 +23,6 @@ const WorkspaceOverview = ({ workspace }) => {
   const [importCollectionModalOpen, setImportCollectionModalOpen] = useState(false);
   const [importCollectionLocationModalOpen, setImportCollectionLocationModalOpen] = useState(false);
   const [importData, setImportData] = useState(null);
-  const [showCloneGitModal, setShowCloneGitModal] = useState(false);
-  const [gitRepositoryUrl, setGitRepositoryUrl] = useState(null);
   const { postmanPackagePrompt, clearPostmanPackagePrompt, handleImportResolved } = usePostmanPackagePrompt();
 
   const workspaceCollectionsCount = workspace?.collections?.length || 0;
@@ -64,15 +61,8 @@ const WorkspaceOverview = ({ workspace }) => {
     setImportCollectionModalOpen(true);
   };
 
-  const handleImportCollectionSubmit = ({ rawData, type, repositoryUrl, ...rest }) => {
+  const handleImportCollectionSubmit = ({ rawData, type, ...rest }) => {
     setImportCollectionModalOpen(false);
-
-    if (type === 'git-repository') {
-      setGitRepositoryUrl(repositoryUrl);
-      setShowCloneGitModal(true);
-      return;
-    }
-
     setImportData({ rawData, type, ...rest });
     setImportCollectionLocationModalOpen(true);
   };
@@ -88,11 +78,6 @@ const WorkspaceOverview = ({ workspace }) => {
         setImportData(null);
         handleImportResolved(convertedCollection, importedItem);
       });
-  };
-
-  const handleCloseGitModal = () => {
-    setShowCloneGitModal(false);
-    setGitRepositoryUrl(null);
   };
 
   return (
@@ -120,13 +105,6 @@ const WorkspaceOverview = ({ workspace }) => {
           importData={importData}
           onClose={() => setImportCollectionLocationModalOpen(false)}
           handleSubmit={handleImportCollectionLocation}
-        />
-      )}
-      {showCloneGitModal && (
-        <CloneGitRepository
-          onClose={handleCloseGitModal}
-          onFinish={handleCloseGitModal}
-          collectionRepositoryUrl={gitRepositoryUrl}
         />
       )}
       {postmanPackagePrompt && (

@@ -3490,22 +3490,6 @@ export const deleteDotEnvFile = (collectionUid, filename = '.env') => (dispatch,
   });
 };
 
-export const cloneGitRepository = (data) => (dispatch, getState) => {
-  const { ipcRenderer } = window;
-  return new Promise((resolve, reject) => {
-    ipcRenderer
-      .invoke('renderer:clone-git-repository', data)
-      .then((res) => {
-        console.log('clone done', res);
-      })
-      .then(resolve)
-      .catch((err) => {
-        toast.custom(<IpcErrorModal error={err?.message} />);
-        reject();
-      });
-  });
-};
-
 export const scanForBrunoFiles = (dir) => (dispatch, getState) => {
   const { ipcRenderer } = window;
   return new Promise((resolve, reject) => {

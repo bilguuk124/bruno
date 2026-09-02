@@ -133,36 +133,6 @@ const StyledWrapper = styled.div`
     margin-top: 0.75rem;
     margin-left: 1.125rem;
   }
-
-  .adv-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .adv-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    margin: 0;
-    cursor: pointer;
-
-    .toggle-label {
-      font-size: ${(props) => props.theme.font.size.base};
-      font-weight: 500;
-      line-height: 1.25rem;
-      color: ${(props) => props.theme.text};
-    }
-  }
-
-  .adv-desc {
-    margin: 0 0 0 1.25rem;
-    font-size: ${(props) => props.theme.font.size.sm};
-    font-weight: 400;
-    color: ${(props) => props.theme.colors.text.subtext2};
-    line-height: 1.125rem;
-  }
 `;
 
 export default StyledWrapper;

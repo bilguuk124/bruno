@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import {
   updateCookies,
   updatePreferences,
-  setGitVersion,
   setIsOpeningCollection
 } from 'providers/ReduxStore/slices/app';
 import {
@@ -378,10 +377,6 @@ const useIpcEvents = () => {
       dispatch(updateCollectionLoadingState(val));
     });
 
-    const gitVersionListener = ipcRenderer.on('main:git-version', (val) => {
-      dispatch(setGitVersion(val));
-    });
-
     // Mock server events
     const removeMockServerStatusListener = ipcRenderer.on('main:mock-server-status-changed', (val) => {
       dispatch(updateServerStatus(val));
@@ -463,7 +458,6 @@ const useIpcEvents = () => {
       removeCollectionVariablesUpdateListener();
       removeRuntimeVariablesUpdateListener();
       removeSystemResourcesListener();
-      gitVersionListener();
       removeMockServerStatusListener();
       removeMockServerRequestLogListener();
       removeMockServerAddedListener();

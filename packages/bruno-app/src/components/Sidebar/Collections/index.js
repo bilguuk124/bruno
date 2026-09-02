@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import Collection from './Collection';
-import GitRemoteCollectionRow from './GitRemoteCollectionRow';
 import StyledWrapper from './StyledWrapper';
 import CreateOrOpenCollection from './CreateOrOpenCollection';
 import CollectionSearch from './CollectionSearch/index';
@@ -22,10 +21,7 @@ const Collections = ({ showSearch, isCreatingCollection, onCreateClick, onDismis
 
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid) || workspaces.find((w) => w.type === 'default');
 
-  // Build the sidebar list in workspace.yml order. Each entry is either a fully
-  // loaded collection (rendered via <Collection />) or, for non-default workspaces,
-  // a "ghost" git-backed entry whose local folder is missing (rendered via
-  // <GitRemoteCollectionRow /> so the user can click to clone it).
+  // Build the sidebar list in workspace.yml order — one entry per loaded collection.
   const sidebarEntries = useMemo(
     () => buildSidebarEntries({ collections, workspaces, activeWorkspace, collectionSortOrder }),
     [activeWorkspace, collections, workspaces, collectionSortOrder]
@@ -69,12 +65,9 @@ const Collections = ({ showSearch, isCreatingCollection, onCreateClick, onDismis
             onOpenAdvanced={onOpenAdvancedCreate}
           />
         )}
-        {sidebarEntries.map((entry) => {
-          if (entry.kind === 'loaded') {
-            return <Collection searchText={searchText} collection={entry.collection} key={entry.key} openBulkMenu={openBulkMenu} />;
-          }
-          return <GitRemoteCollectionRow entry={entry.entry} key={entry.key} />;
-        })}
+        {sidebarEntries.map((entry) => (
+          <Collection searchText={searchText} collection={entry.collection} key={entry.key} openBulkMenu={openBulkMenu} />
+        ))}
       </div>
       <CollectionItemDragPreview />
       <BulkActionsMenu menuProps={menuProps} />

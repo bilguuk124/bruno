@@ -10,9 +10,7 @@ const defaultProps = {
   onFilterModeChange: jest.fn(),
   tags: { include: [], exclude: [] },
   availableTags: ['prod', 'wip'],
-  onTagsChange: jest.fn(),
-  includeGitLink: true,
-  onGitLinkToggle: jest.fn()
+  onTagsChange: jest.fn()
 };
 
 const renderAdvanced = (props = {}) =>
@@ -68,16 +66,6 @@ describe('Advanced (Generate Documentation)', () => {
     const hint = getByTestId('docs-requests-filter').querySelector('.seg-hint');
     expect(hint).toBeInTheDocument();
     expect(hint.getAttribute('data-tooltip-content')).toContain('Tags are labels');
-  });
-
-  it('toggles the git repo link when the switch is clicked', () => {
-    const onGitLinkToggle = jest.fn();
-    const { getByText, getByRole, getByTestId } = renderAdvanced({ onGitLinkToggle });
-    expand(getByTestId);
-
-    expect(getByText('Include git repo URL')).toBeInTheDocument();
-    fireEvent.click(getByRole('checkbox'));
-    expect(onGitLinkToggle).toHaveBeenCalled();
   });
 
   it('keeps the collapsible body out of the a11y tree and tab order until expanded', () => {

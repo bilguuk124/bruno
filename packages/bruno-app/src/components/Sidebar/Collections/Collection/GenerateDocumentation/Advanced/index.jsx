@@ -1,21 +1,12 @@
 import React, { useId, useState } from 'react';
-import { IconChevronRight, IconListCheck, IconGitBranch, IconInfoCircle } from '@tabler/icons';
+import { IconChevronRight, IconListCheck, IconInfoCircle } from '@tabler/icons';
 import { Tooltip } from 'react-tooltip';
-import ToggleSwitch from 'components/ToggleSwitch';
 import IncludeExcludeTags from './IncludeExcludeTags';
 import StyledWrapper from './StyledWrapper';
 
 const TAGS_HINT = 'Tags are labels on requests (e.g. smoke, WIP). Manage tags in Request › Settings';
 
-const Advanced = ({
-  filterByTags,
-  onFilterModeChange,
-  tags,
-  availableTags,
-  onTagsChange,
-  includeGitLink,
-  onGitLinkToggle
-}) => {
+const Advanced = ({ filterByTags, onFilterModeChange, tags, availableTags, onTagsChange }) => {
   const [open, setOpen] = useState(false);
   const requestsLabelId = useId();
 
@@ -81,20 +72,6 @@ const Advanced = ({
                   onChange={onTagsChange}
                 />
               )}
-            </section>
-
-            <section className="adv-section">
-              <div className="adv-row">
-                <div className="adv-label mb-0">
-                  <IconGitBranch size={16} className="adv-label-icon" aria-hidden="true" />
-                  <span>Include git repo URL</span>
-                </div>
-                <label className="adv-toggle">
-                  <span className="toggle-label">Show</span>
-                  <ToggleSwitch isOn={includeGitLink} handleToggle={onGitLinkToggle} size="xs" />
-                </label>
-              </div>
-              <p className="adv-desc">Adds the repository link so readers can clone your collection in Bruno.</p>
             </section>
           </div>
         </div>

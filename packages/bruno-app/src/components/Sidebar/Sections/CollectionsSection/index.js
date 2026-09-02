@@ -29,7 +29,6 @@ import ActionIcon from 'ui/ActionIcon';
 import ImportCollection from 'components/Sidebar/ImportCollection';
 import ImportCollectionLocation from 'components/Sidebar/ImportCollectionLocation';
 import BulkImportCollectionLocation from 'components/Sidebar/BulkImportCollectionLocation';
-import CloneGitRepository from 'components/Sidebar/CloneGitRespository';
 import RemoveCollections from 'components/Sidebar/Collections/Collection/RemoveCollections/index';
 import CreateCollection from 'components/Sidebar/CreateCollection';
 import PostmanPackageReport from 'components/Sidebar/PostmanPackageReport';
@@ -58,8 +57,6 @@ const CollectionsSection = () => {
   const [advancedCreateName, setAdvancedCreateName] = useState('');
   const [importCollectionModalOpen, setImportCollectionModalOpen] = useState(false);
   const [importCollectionLocationModalOpen, setImportCollectionLocationModalOpen] = useState(false);
-  const [showCloneGitModal, setShowCloneGitModal] = useState(false);
-  const [gitRepositoryUrl, setGitRepositoryUrl] = useState(null);
   const { postmanPackagePrompt, clearPostmanPackagePrompt, handleImportResolved } = usePostmanPackagePrompt();
 
   // Import collection shortcut
@@ -99,14 +96,8 @@ const CollectionsSection = () => {
     });
   }, [activeWorkspace, collections, workspaces]);
 
-  const handleImportCollection = ({ rawData, type, repositoryUrl, ...rest }) => {
+  const handleImportCollection = ({ rawData, type, ...rest }) => {
     setImportCollectionModalOpen(false);
-
-    if (type === 'git-repository') {
-      setGitRepositoryUrl(repositoryUrl);
-      setShowCloneGitModal(true);
-      return;
-    }
 
     setImportData({ rawData, type, ...rest });
     setImportCollectionLocationModalOpen(true);
@@ -123,11 +114,6 @@ const CollectionsSection = () => {
         setImportData(null);
         handleImportResolved(convertedCollection, importedItem);
       });
-  };
-
-  const handleCloseGitModal = () => {
-    setShowCloneGitModal(false);
-    setGitRepositoryUrl(null);
   };
 
   const handleToggleSearch = () => {
@@ -384,13 +370,6 @@ const CollectionsSection = () => {
           importData={importData}
           onClose={() => setImportCollectionLocationModalOpen(false)}
           handleSubmit={handleImportCollectionLocation}
-        />
-      )}
-      {showCloneGitModal && (
-        <CloneGitRepository
-          onClose={handleCloseGitModal}
-          onFinish={handleCloseGitModal}
-          collectionRepositoryUrl={gitRepositoryUrl}
         />
       )}
       {postmanPackagePrompt && (

@@ -22,8 +22,6 @@ const {
   updateWorkspaceDocs,
   addCollectionToWorkspace,
   removeCollectionFromWorkspace,
-  setCollectionGitRemote,
-  clearCollectionGitRemote,
   reorderWorkspaceCollections,
   getWorkspaceCollections,
   getUnopenableWorkspaceCollections,
@@ -582,42 +580,6 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
       const configForClient = prepareWorkspaceConfigForClient(result.updatedConfig, workspacePath, isDefault);
       mainWindow.webContents.send('main:workspace-config-updated', workspacePath, correctWorkspaceUid, configForClient);
 
-      return true;
-    } catch (error) {
-      throw error;
-    }
-  });
-
-  const broadcastWorkspaceConfig = (workspacePath, config) => {
-    const workspaceUid = getWorkspaceUid(workspacePath);
-    const isDefault = workspaceUid === 'default';
-    const configForClient = prepareWorkspaceConfigForClient(config, workspacePath, isDefault);
-    mainWindow.webContents.send('main:workspace-config-updated', workspacePath, workspaceUid, configForClient);
-  };
-
-  ipcMain.handle('renderer:connect-collection-to-git', async (event, workspacePath, collectionPath, remoteUrl) => {
-    try {
-      if (typeof remoteUrl !== 'string' || remoteUrl.trim() === '') {
-        throw new Error('A Git remote URL is required');
-      }
-
-      const trimmedUrl = remoteUrl.trim();
-      if (!/^(https?:\/\/|git@|ssh:\/\/|git:\/\/).+/.test(trimmedUrl)) {
-        throw new Error('Invalid Git remote URL');
-      }
-
-      const updatedConfig = await setCollectionGitRemote(workspacePath, collectionPath, trimmedUrl);
-      broadcastWorkspaceConfig(workspacePath, updatedConfig);
-      return true;
-    } catch (error) {
-      throw error;
-    }
-  });
-
-  ipcMain.handle('renderer:disconnect-collection-from-git', async (event, workspacePath, collectionPath) => {
-    try {
-      const updatedConfig = await clearCollectionGitRemote(workspacePath, collectionPath);
-      broadcastWorkspaceConfig(workspacePath, updatedConfig);
       return true;
     } catch (error) {
       throw error;

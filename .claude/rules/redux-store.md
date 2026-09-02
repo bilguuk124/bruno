@@ -107,11 +107,11 @@ used in just one place (`src/selectors/tab.js`). Default to inline
 ## Sidebar collection visibility
 
 Collections render in the sidebar only when they belong to the **active workspace**.
-`Sidebar/Collections/index.js` builds the list in a `useMemo` that walks
-`activeWorkspace.collections`, matches loaded collections through a `Map` keyed on
-`normalizePath(pathname)`, **excludes scratch collections** (`isScratchCollection`), adds "ghost"
-git-remote rows (`GitRemoteCollectionRow`) for non-default workspaces, and sorts alphabetically.
-Read the current `useMemo` before changing this. Collapsed folders do **not** render their children
+`Sidebar/Collections/index.js` builds the list in a `useMemo` (via `buildSidebarEntries` in
+`utils/collections/index.js`) that walks `activeWorkspace.collections`, matches loaded collections
+through a `Map` keyed on `normalizePath(pathname)`, **excludes scratch collections**
+(`isScratchCollection`), and sorts by `collectionSortOrder`. Read the current `useMemo` before
+changing this. Collapsed folders do **not** render their children
 in the DOM (conditional render on `item.collapsed`).
 
 ## Sidebar DOM structure (for Playwright)

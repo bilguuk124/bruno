@@ -9,13 +9,6 @@ import * as FileSaver from 'file-saver';
 import { generateApiDocsHtml } from '@usebruno/common';
 import GenerateDocumentation from './index';
 
-let mockGitRemote = { gitCollectionUrl: null, isResolved: true };
-
-jest.mock('hooks/useCollectionGitRemoteUrl', () => ({
-  __esModule: true,
-  default: () => mockGitRemote
-}));
-
 jest.mock('providers/App', () => ({
   useApp: () => ({ version: '1.2.3' })
 }));
@@ -84,7 +77,6 @@ const renderModal = (collection, onClose = jest.fn()) => {
 };
 
 beforeEach(() => {
-  mockGitRemote = { gitCollectionUrl: null, isResolved: true };
   generateApiDocsHtml.mockClear();
   FileSaver.saveAs.mockClear();
 });
@@ -96,43 +88,16 @@ describe('GenerateDocumentation', () => {
     expect(screen.queryByTestId('docs-advanced-toggle')).not.toBeInTheDocument();
   });
 
-  it('keeps Generate disabled until the git remote url has resolved', () => {
-    mockGitRemote = { gitCollectionUrl: null, isResolved: false };
-    renderModal(buildCollection());
-    expect(screen.getByTestId('generate-btn')).toBeDisabled();
-  });
-
-  it('enables Generate once the git remote url has resolved', () => {
-    mockGitRemote = { gitCollectionUrl: 'https://github.com/org/repo.git', isResolved: true };
-    renderModal(buildCollection());
-    expect(screen.getByTestId('generate-btn')).toBeEnabled();
-  });
-
-  it('generates docs with the resolved git url, the shared filename, and the format-aware version', () => {
-    mockGitRemote = { gitCollectionUrl: 'https://github.com/org/repo.git', isResolved: true };
+  it('generates docs with the shared filename and the format-aware version', () => {
     const { onClose } = renderModal(buildCollection({ name: 'My Collection' }));
 
     fireEvent.click(screen.getByTestId('generate-btn'));
 
     expect(generateApiDocsHtml).toHaveBeenCalledTimes(1);
     const [, options] = generateApiDocsHtml.mock.calls[0];
-    expect(options.gitCollectionUrl).toBe('https://github.com/org/repo.git');
     expect(options.collectionVersion).toBe('2.0');
     expect(options.tags).toEqual({ include: [], exclude: [] });
     expect(FileSaver.saveAs).toHaveBeenCalledWith(expect.any(Blob), 'My Collection-documentation.html');
     expect(onClose).toHaveBeenCalled();
-  });
-
-  it('omits the git url when the include-git-link toggle is turned off', () => {
-    mockGitRemote = { gitCollectionUrl: 'https://github.com/org/repo.git', isResolved: true };
-    renderModal(buildCollection());
-
-    fireEvent.click(screen.getByTestId('docs-advanced-toggle'));
-    fireEvent.click(screen.getByRole('checkbox'));
-
-    fireEvent.click(screen.getByTestId('generate-btn'));
-
-    const [, options] = generateApiDocsHtml.mock.calls[0];
-    expect(options.gitCollectionUrl).toBeUndefined();
   });
 });

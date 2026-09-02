@@ -14,7 +14,6 @@ import CollectionVersionInfo from './CollectionVersionInfo';
 import EnvironmentSelectionList from './EnvironmentSelectionList';
 import Advanced from './Advanced';
 import { useApp } from 'providers/App';
-import useCollectionGitRemoteUrl from 'hooks/useCollectionGitRemoteUrl';
 import { transformCollectionToSaveToExportAsFile, findCollectionByUid, areItemsLoading, sortItemsBySidebarOrder, getCollectionItemCounts, getCollectionVersion, getUniqueTagsFromItems } from 'utils/collections/index';
 import { brunoToOpenCollection } from '@usebruno/converters';
 import { generateApiDocsHtml, getApiDocsFileName } from '@usebruno/common';
@@ -88,8 +87,6 @@ const GenerateDocumentation = ({ onClose, collectionUid }) => {
   );
   const [filterByTags, setFilterByTags] = useState(false);
   const [docTags, setDocTags] = useState({ include: [], exclude: [] });
-  const [includeGitLink, setIncludeGitLink] = useState(true);
-  const { gitCollectionUrl, isResolved: gitUrlLoaded } = useCollectionGitRemoteUrl(collection?.pathname);
 
   const handleGenerate = useCallback(() => {
     try {
@@ -107,7 +104,6 @@ const GenerateDocumentation = ({ onClose, collectionUid }) => {
         transformedCollection,
         {
           tags: filterByTags ? docTags : { include: [], exclude: [] },
-          gitCollectionUrl: includeGitLink ? gitCollectionUrl : undefined,
           collectionVersion: currentVersion,
           exportedAt: new Date().toISOString(),
           exportedUsing: version ? `Bruno/${version}` : 'Bruno'
@@ -124,7 +120,7 @@ const GenerateDocumentation = ({ onClose, collectionUid }) => {
       console.error('Error generating documentation:', error);
       toast.error('Failed to generate documentation');
     }
-  }, [collection, version, onClose, currentVersion, selectedEnvUidsSet, filterByTags, docTags, includeGitLink, gitCollectionUrl]);
+  }, [collection, version, onClose, currentVersion, selectedEnvUidsSet, filterByTags, docTags]);
 
   if (!collection) {
     return <CollectionNotFound onClose={onClose} />;
@@ -139,7 +135,7 @@ const GenerateDocumentation = ({ onClose, collectionUid }) => {
         cancelText="Cancel"
         handleConfirm={isLoading ? undefined : handleGenerate}
         handleCancel={onClose}
-        confirmDisabled={isLoading || (includeGitLink && !gitUrlLoaded)}
+        confirmDisabled={isLoading}
       >
         <StyledWrapper>
           {isLoading ? (
@@ -190,8 +186,6 @@ const GenerateDocumentation = ({ onClose, collectionUid }) => {
                   tags={docTags}
                   availableTags={availableTags}
                   onTagsChange={setDocTags}
-                  includeGitLink={includeGitLink}
-                  onGitLinkToggle={() => setIncludeGitLink((prev) => !prev)}
                 />
               </div>
 

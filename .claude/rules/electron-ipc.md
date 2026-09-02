@@ -105,7 +105,7 @@ renderer mounts
      -> main handles 'renderer:ready'                    [ipc/preferences.js]
           await onboardingPromise
           send main:load-preferences
-          send main:load-global-environments (+ main:git-version, reopen last apispecs, ...)
+          send main:load-global-environments (+ reopen last apispecs, ...)
           ipcMain.emit('main:renderer-ready')
             -> workspace.js listener:                     [ipc/workspace.js]
                  await ensureDefaultWorkspaceExists()
