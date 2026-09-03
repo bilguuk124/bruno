@@ -135,11 +135,12 @@ export const resolveConflictRecreate = (itemUid, collectionUid) => async (dispat
   if (!item) return;
 
   const parent = findParentItemInCollection(collection, itemUid);
-  const source = { ...item, request: effectiveRequest(item), uid: uuid() };
+  // the draft becomes the recreated request's saved content — carry no draft over
+  const source = { ...item, request: effectiveRequest(item), draft: null, uid: uuid(), revision: 0 };
   dispatch(clearItemConflict({ itemUid, collectionUid }));
   dispatch(closeTabs({ tabUids: [itemUid] }));
   dispatch(removeItemFromTree({ itemUid, collectionUid }));
-  dispatch(newItem({ collectionUid, currentItemUid: parent ? parent.uid : null, item: { ...source, revision: 0 } }));
+  dispatch(newItem({ collectionUid, currentItemUid: parent ? parent.uid : null, item: source }));
   dispatch(addTab({ uid: source.uid, collectionUid, type: source.type, preview: false }));
   try {
     const created = await transport.backend.createRequest(collection.backendId, {
