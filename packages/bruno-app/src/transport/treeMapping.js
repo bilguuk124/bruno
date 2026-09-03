@@ -110,6 +110,13 @@ export const requestCreateBody = (item, folderId) => {
   };
 };
 
+/** The POST /collections/:id/folders body for a Bruno folder item. */
+export const folderCreateBody = (item, parentFolderId) => ({
+  id: item.uid,
+  parentFolderId: parentFolderId ?? null,
+  name: item.name
+});
+
 /** The PATCH /requests/:id body from a Bruno item (or its draft). */
 export const requestPatchBody = (item) => {
   const req = isObject(item.request) ? item.request : {};

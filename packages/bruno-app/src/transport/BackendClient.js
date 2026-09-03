@@ -148,6 +148,10 @@ export default class BackendClient {
     return this.get(`/collections/${collectionId}/tree`);
   }
 
+  reorder(collectionId, body) {
+    return this.post(`/collections/${collectionId}/reorder`, body);
+  }
+
   // --- requests ---
 
   createRequest(collectionId, body) {

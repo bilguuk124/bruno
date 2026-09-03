@@ -80,7 +80,7 @@ import {
 } from './index';
 
 import { each } from 'lodash';
-import { teamSaveRequest, teamCreateRequest, teamDeleteItem, teamRenameItem } from './team';
+import { teamSaveRequest, teamCreateRequest, teamCreateFolder, teamDeleteItem, teamRenameItem, teamHandleItemsDrop } from './team';
 import { closeAllCollectionTabs, closeTabs as _closeTabs, focusTab, restoreTabs, reopenLastClosedTab } from 'providers/ReduxStore/slices/tabs';
 import { clearOpenApiSyncTabState } from 'providers/ReduxStore/slices/openapi-sync';
 import { removeCollectionFromWorkspace } from 'providers/ReduxStore/slices/workspaces';
@@ -803,6 +803,9 @@ export const runCollectionFolder
 export const newFolder = (folderName, directoryName, collectionUid, itemUid) => (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  if (collection?.origin === 'team') {
+    return dispatch(teamCreateFolder(folderName, collectionUid, itemUid || null));
+  }
   const parentItem = itemUid ? findItemInCollection(collection, itemUid) : collection;
   const items = filter(parentItem.items, (i) => isItemAFolder(i) || isItemARequest(i));
 
@@ -1146,6 +1149,9 @@ export const handleMultipleCollectionItemsDrop
     (dispatch, getState) => {
       const state = getState();
       const collection = findCollectionByUid(state.collections.collections, collectionUid);
+      if (collection?.origin === 'team') {
+        return dispatch(teamHandleItemsDrop({ targetItem, draggedItems, dropType, collectionUid }));
+      }
       const { uid: targetItemUid, pathname: targetItemPathname } = targetItem;
 
       // cache of directories by uid -> items array
