@@ -12,6 +12,7 @@ import { findItemInCollection, findItemInCollectionByPathname, areItemsLoading }
 import { cancelRequest, sendRequest } from 'providers/ReduxStore/slices/collections/actions';
 import { updateGqlDocsOpen } from 'providers/ReduxStore/slices/tabs';
 import RequestNotFound from './RequestNotFound';
+import RequestConflictBanner from 'components/RequestConflictBanner';
 import QueryUrl from 'components/RequestPane/QueryUrl/index';
 import GrpcQueryUrl from 'components/RequestPane/GrpcQueryUrl/index';
 import NetworkError from 'components/ResponsePane/NetworkError';
@@ -716,6 +717,7 @@ const RequestTabPanel = () => {
         <div className="query-url-wrapper pt-3 pb-4 px-4">
           {renderQueryUrl()}
         </div>
+        <RequestConflictBanner item={item} collectionUid={collection?.uid} />
         <section ref={mainSectionRef} className={`main flex ${isVerticalLayout ? 'flex-col' : ''} flex-grow relative overflow-auto`}>
           {requestPaneCollapsed ? (
             <CollapsedPanelIndicator

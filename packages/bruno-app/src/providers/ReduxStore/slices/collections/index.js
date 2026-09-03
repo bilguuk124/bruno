@@ -1,6 +1,6 @@
 import { parseQueryParams, buildQueryString as stringifyQueryParams } from '@usebruno/common/utils';
 import { uuid } from 'utils/common';
-import { find, map, forOwn, concat, filter, each, cloneDeep, get, set, findIndex, pick } from 'lodash';
+import { find, map, forOwn, concat, filter, each, cloneDeep, get, set, findIndex, pick, isEqual } from 'lodash';
 import { createSlice } from '@reduxjs/toolkit';
 import { hexy as hexdump } from 'hexy';
 import {
@@ -891,6 +891,8 @@ export const collectionsSlice = createSlice({
         if (item && item.draft) {
           item.draft = null;
         }
+        // discarding the draft resolves any pending merge conflict with it
+        if (item) delete item.conflict;
       }
     },
     saveCollectionDraft: (state, action) => {
@@ -3695,6 +3697,18 @@ export const collectionsSlice = createSlice({
       if (!existing) return;
       if (typeof existing.revision === 'number' && incoming.revision <= existing.revision) return;
 
+      // A content change arriving while the user has unsaved edits open is a
+      // conflict: don't rebase (that would let the next save clobber the
+      // remote change without a 412). Flag it and let the conflict banner
+      // drive the resolution. A pure reorder (seq only, same request body) is
+      // not a conflict.
+      const isRequestLike = incoming.type !== 'folder' && incoming.type !== 'js' && incoming.type !== 'app';
+      if (isRequestLike && existing.draft && !isEqual(existing.request, incoming.request)) {
+        existing.seq = incoming.seq;
+        existing.conflict = { kind: 'revision', server: incoming };
+        return;
+      }
+
       existing.name = incoming.name;
       existing.seq = incoming.seq;
       existing.revision = incoming.revision;
@@ -3708,6 +3722,24 @@ export const collectionsSlice = createSlice({
           existing.draft = null;
         }
       }
+    },
+
+    /** Record a merge conflict on a team item — a 412 on save, a remote edit
+     * while a draft is open, or the item being deleted upstream. Drives the
+     * RequestConflictBanner. `conflict = { kind: 'revision'|'deleted', server?,
+     * updatedByName?, at? }`. */
+    setItemConflict: (state, action) => {
+      const { collectionUid, itemUid, conflict } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      const item = collection ? findItemInCollection(collection, itemUid) : null;
+      if (item) item.conflict = conflict;
+    },
+
+    clearItemConflict: (state, action) => {
+      const { collectionUid, itemUid } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      const item = collection ? findItemInCollection(collection, itemUid) : null;
+      if (item) delete item.conflict;
     },
 
     /** Post-write bookkeeping for a team collection item: stamp the server
@@ -4166,6 +4198,8 @@ export const {
   cloneItem,
   applyBackendItemChange,
   setItemSyncState,
+  setItemConflict,
+  clearItemConflict,
   scriptEnvironmentUpdateEvent,
   runtimeVariablesUpdateEvent,
   processEnvUpdateEvent,

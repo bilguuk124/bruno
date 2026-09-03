@@ -9,8 +9,11 @@ import {
   deleteItem as removeItemFromTree,
   renameItem as renameItemInTree,
   saveRequest as applySavedRequestDraft,
+  deleteRequestDraft,
   applyBackendItemChange,
-  setItemSyncState
+  setItemSyncState,
+  setItemConflict,
+  clearItemConflict
 } from 'providers/ReduxStore/slices/collections';
 import { refetchTeamCollectionTree } from 'providers/ReduxStore/slices/backend';
 
@@ -21,31 +24,32 @@ import { refetchTeamCollectionTree } from 'providers/ReduxStore/slices/backend';
  * Model:
  *  - Item identity is the backend uuid; new items get a client-generated uuid
  *    so the create is optimistic and a retried POST is idempotent.
- *  - Every write carries `If-Match: <item.revision>`. On 412 we pull the
- *    server's row, rebase the item (keeping the user's draft), and retry once
- *    (last-write-wins). A second 412 surfaces as a save error.
+ *  - Every write carries `If-Match: <item.revision>`. A 412 does NOT retry:
+ *    it records `item.conflict` (with the server's current version) and the
+ *    RequestConflictBanner lets the user choose overwrite / take-theirs /
+ *    keep-editing. A 404 on save means the request was deleted upstream.
  *  - The WebSocket echo of our own write is ignored by revision in the
- *    applyBackendItemChange reducer.
+ *    applyBackendItemChange reducer; a remote *content* edit arriving while a
+ *    draft is open also raises `item.conflict` instead of rebasing.
  */
 
 const effectiveRequest = (item) => (item.draft && item.draft.request) || item.request;
+const draftPatchBody = (item) => requestPatchBody({ name: item.name, request: effectiveRequest(item), tags: item.tags });
 
-const patchRequestWithRebase = async (dispatch, collectionUid, item) => {
-  const body = requestPatchBody({ name: item.name, request: effectiveRequest(item), tags: item.tags });
-  try {
-    return await transport.backend.updateRequest(item.uid, body, item.revision);
-  } catch (err) {
-    if (!err.isRevisionConflict) throw err;
-    const server = await transport.backend.getRequest(item.uid);
-    dispatch(
-      applyBackendItemChange({
-        collectionUid,
-        entityType: 'request',
-        item: changePatchToItem(server).item
-      })
-    );
-    return transport.backend.updateRequest(item.uid, body, server.revision);
-  }
+const raiseRevisionConflict = async (dispatch, collectionUid, itemUid, err) => {
+  const current = (err.body && err.body.current) || (await transport.backend.getRequest(itemUid));
+  dispatch(
+    setItemConflict({
+      collectionUid,
+      itemUid,
+      conflict: {
+        kind: 'revision',
+        server: changePatchToItem(current).item,
+        updatedByName: (err.body && err.body.updatedByName) || null,
+        at: current.updatedAt || null
+      }
+    })
+  );
 };
 
 /** Ctrl+S / autosave on a team request. */
@@ -54,15 +58,99 @@ export const teamSaveRequest = (itemUid, collectionUid, silent = false) => async
   const item = collection && findItemInCollection(collection, itemUid);
   if (!item) throw new Error('Not able to locate item');
 
+  // an unresolved conflict blocks autosave — the user resolves it via the banner
+  if (silent && item.conflict) return;
+
   try {
-    const server = await patchRequestWithRebase(dispatch, collectionUid, item);
+    const server = await transport.backend.updateRequest(itemUid, draftPatchBody(item), item.revision);
     dispatch(applySavedRequestDraft({ itemUid, collectionUid }));
     dispatch(setItemSyncState({ collectionUid, itemUid, revision: server.revision, saveError: null }));
+    dispatch(clearItemConflict({ collectionUid, itemUid }));
     if (!silent) toast.success('Request saved');
   } catch (err) {
+    if (err.isRevisionConflict) {
+      await raiseRevisionConflict(dispatch, collectionUid, itemUid, err);
+      if (!silent) toast('This request changed on the server — review before saving', { icon: '⚠️' });
+      return;
+    }
+    if (err.status === 404) {
+      dispatch(setItemConflict({ collectionUid, itemUid, conflict: { kind: 'deleted' } }));
+      return;
+    }
     dispatch(setItemSyncState({ collectionUid, itemUid, saveError: err.message || 'Save failed' }));
     if (!silent) toast.error(err.message || 'Failed to save request');
     throw err;
+  }
+};
+
+/** Conflict resolution — "keep mine": write the draft over the server version. */
+export const resolveConflictOverwrite = (itemUid, collectionUid) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  const item = collection && findItemInCollection(collection, itemUid);
+  if (!item || !item.conflict) return;
+
+  const serverRevision = item.conflict.server ? item.conflict.server.revision : item.revision;
+  try {
+    const saved = await transport.backend.updateRequest(itemUid, draftPatchBody(item), serverRevision);
+    dispatch(applySavedRequestDraft({ itemUid, collectionUid }));
+    dispatch(setItemSyncState({ collectionUid, itemUid, revision: saved.revision, saveError: null }));
+    dispatch(clearItemConflict({ collectionUid, itemUid }));
+    toast.success('Your version saved');
+  } catch (err) {
+    if (err.isRevisionConflict) {
+      // it changed again mid-resolution — refresh the conflict and let them retry
+      await raiseRevisionConflict(dispatch, collectionUid, itemUid, err);
+      toast('It changed again on the server', { icon: '⚠️' });
+      return;
+    }
+    toast.error(err.message || 'Could not save');
+  }
+};
+
+/** Conflict resolution — "take theirs": drop the draft, adopt the server version. */
+export const resolveConflictTakeTheirs = (itemUid, collectionUid) => (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  const item = collection && findItemInCollection(collection, itemUid);
+  if (!item) return;
+
+  const serverVersion = item.conflict && item.conflict.server;
+  dispatch(deleteRequestDraft({ itemUid, collectionUid })); // also clears item.conflict
+  if (serverVersion) {
+    dispatch(applyBackendItemChange({ collectionUid, entityType: 'request', item: serverVersion }));
+  } else {
+    dispatch(refetchTeamCollectionTree(collection.backendId));
+  }
+  toast.success('Reloaded the server version');
+};
+
+/** Conflict resolution — "keep editing": dismiss the banner; a later save re-checks. */
+export const dismissConflict = (itemUid, collectionUid) => (dispatch) => {
+  dispatch(clearItemConflict({ itemUid, collectionUid }));
+};
+
+/** Deleted-upstream resolution — recreate the request from the draft under a new id. */
+export const resolveConflictRecreate = (itemUid, collectionUid) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  const item = collection && findItemInCollection(collection, itemUid);
+  if (!item) return;
+
+  const parent = findParentItemInCollection(collection, itemUid);
+  const source = { ...item, request: effectiveRequest(item), uid: uuid() };
+  dispatch(clearItemConflict({ itemUid, collectionUid }));
+  dispatch(closeTabs({ tabUids: [itemUid] }));
+  dispatch(removeItemFromTree({ itemUid, collectionUid }));
+  dispatch(newItem({ collectionUid, currentItemUid: parent ? parent.uid : null, item: { ...source, revision: 0 } }));
+  dispatch(addTab({ uid: source.uid, collectionUid, type: source.type, preview: false }));
+  try {
+    const created = await transport.backend.createRequest(collection.backendId, {
+      ...requestCreateBody(source, parent ? parent.uid : null),
+      id: source.uid
+    });
+    dispatch(setItemSyncState({ collectionUid, itemUid: source.uid, revision: created.revision, saveError: null }));
+    toast.success('Recreated your request');
+  } catch (err) {
+    dispatch(removeItemFromTree({ itemUid: source.uid, collectionUid }));
+    toast.error(err.message || 'Could not recreate');
   }
 };
 
@@ -164,9 +252,20 @@ export const teamRenameItem = (newName, itemUid, collectionUid) => async (dispat
     try {
       server = await send(item.revision);
     } catch (err) {
+      if (err.status === 404) {
+        // renamed a request that was deleted upstream
+        dispatch(renameItemInTree({ newName: previousName, itemUid, collectionUid }));
+        if (!isFolder) dispatch(setItemConflict({ collectionUid, itemUid, conflict: { kind: 'deleted' } }));
+        return;
+      }
       if (!err.isRevisionConflict) throw err;
+      // A rename can't lose content, only a label — take the server's newer
+      // revision, keep the user's name (last-write-wins), and say so.
       const fresh = isFolder ? await transport.backend.getFolder(itemUid) : await transport.backend.getRequest(itemUid);
       server = await send(fresh.revision);
+      if (fresh.name !== previousName && fresh.name !== newName) {
+        toast(`Also renamed on the server to "${fresh.name}" — your name kept`, { icon: '⚠️' });
+      }
     }
     dispatch(setItemSyncState({ collectionUid, itemUid, revision: server.revision, saveError: null }));
   } catch (err) {

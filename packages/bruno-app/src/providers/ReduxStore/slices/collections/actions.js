@@ -81,6 +81,12 @@ import {
 
 import { each } from 'lodash';
 import { teamSaveRequest, teamCreateRequest, teamCreateFolder, teamDeleteItem, teamRenameItem, teamHandleItemsDrop } from './team';
+export {
+  resolveConflictOverwrite,
+  resolveConflictTakeTheirs,
+  dismissConflict,
+  resolveConflictRecreate
+} from './team';
 import { closeAllCollectionTabs, closeTabs as _closeTabs, focusTab, restoreTabs, reopenLastClosedTab } from 'providers/ReduxStore/slices/tabs';
 import { clearOpenApiSyncTabState } from 'providers/ReduxStore/slices/openapi-sync';
 import { removeCollectionFromWorkspace } from 'providers/ReduxStore/slices/workspaces';
