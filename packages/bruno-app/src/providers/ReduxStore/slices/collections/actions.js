@@ -80,6 +80,7 @@ import {
 } from './index';
 
 import { each } from 'lodash';
+import { teamSaveRequest, teamCreateRequest, teamDeleteItem, teamRenameItem } from './team';
 import { closeAllCollectionTabs, closeTabs as _closeTabs, focusTab, restoreTabs, reopenLastClosedTab } from 'providers/ReduxStore/slices/tabs';
 import { clearOpenApiSyncTabState } from 'providers/ReduxStore/slices/openapi-sync';
 import { removeCollectionFromWorkspace } from 'providers/ReduxStore/slices/workspaces';
@@ -137,6 +138,9 @@ export const renameCollection = (newName, collectionUid) => (dispatch, getState)
 export const saveRequest = (itemUid, collectionUid, silent = false) => (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  if (collection?.origin === 'team') {
+    return dispatch(teamSaveRequest(itemUid, collectionUid, silent));
+  }
   const tempDirectory = state.collections.tempDirectories?.[collectionUid];
   return new Promise((resolve, reject) => {
     if (!collection) {
@@ -849,6 +853,10 @@ export const renameItem
       const state = getState();
       const collection = findCollectionByUid(state.collections.collections, collectionUid);
 
+      if (collection?.origin === 'team') {
+        return dispatch(teamRenameItem(newName, itemUid, collectionUid));
+      }
+
       return new Promise((resolve, reject) => {
         if (!collection) {
           return reject(new Error('Collection not found'));
@@ -1081,6 +1089,9 @@ export const pasteItem = (targetCollectionUid, targetItemUid = null) => (dispatc
 export const deleteItem = (itemUid, collectionUid) => (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  if (collection?.origin === 'team') {
+    return dispatch(teamDeleteItem(itemUid, collectionUid));
+  }
 
   return new Promise((resolve, reject) => {
     if (!collection) {
@@ -1399,6 +1410,10 @@ export const newHttpRequest = (params) => (dispatch, getState) => {
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
     if (!collection) {
       return reject(new Error('Collection not found'));
+    }
+
+    if (collection.origin === 'team' && !isTransient) {
+      return dispatch(teamCreateRequest(params)).then(resolve).catch(reject);
     }
 
     // Get temp directory if isTransient is true

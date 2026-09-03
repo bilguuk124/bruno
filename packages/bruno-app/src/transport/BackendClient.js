@@ -162,8 +162,30 @@ export default class BackendClient {
     return this.patch(`/requests/${requestId}`, patch, { ifMatch: revision });
   }
 
+  moveRequest(requestId, body) {
+    return this.post(`/requests/${requestId}/move`, body);
+  }
+
   deleteRequest(requestId) {
     return this.del(`/requests/${requestId}`);
+  }
+
+  // --- folders ---
+
+  createFolder(collectionId, body) {
+    return this.post(`/collections/${collectionId}/folders`, body);
+  }
+
+  getFolder(folderId) {
+    return this.get(`/folders/${folderId}`);
+  }
+
+  updateFolder(folderId, patch, revision) {
+    return this.patch(`/folders/${folderId}`, patch, { ifMatch: revision });
+  }
+
+  deleteFolder(folderId) {
+    return this.del(`/folders/${folderId}`);
   }
 
   // --- user preferences ---

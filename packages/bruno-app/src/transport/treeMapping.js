@@ -47,6 +47,18 @@ export const nodeToItem = (node) => {
   };
 };
 
+/**
+ * A WS `change` frame's `patch` is the backend row, not a TreeNode: it uses
+ * `type` where a node uses `kind`, and carries `collectionId` / `folderId`.
+ * Normalize it to a Bruno item; `folderId` is returned separately for tree
+ * placement.
+ */
+export const changePatchToItem = (patch) => ({
+  item: nodeToItem({ ...patch, kind: patch.kind ?? patch.type }),
+  folderId: patch.folderId ?? null,
+  collectionId: patch.collectionId ?? null
+});
+
 /** The backend GET /collections/:id/tree response -> the `tree` payload that collectionLoadedFromTree expects. */
 export const backendTreeToClientTree = (backendTree, { environments = [] } = {}) => {
   const collection = backendTree.collection || {};

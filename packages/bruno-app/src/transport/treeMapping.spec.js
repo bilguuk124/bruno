@@ -68,6 +68,32 @@ describe('itemToNode round-trips', () => {
   });
 });
 
+describe('changePatchToItem', () => {
+  it('normalizes a change-feed request row (type -> kind) to a Bruno item', () => {
+    const { item, folderId, collectionId } = require('./treeMapping').changePatchToItem({
+      id: 'r1',
+      collectionId: 'c1',
+      folderId: 'f9',
+      name: 'Ping',
+      type: 'http-request',
+      method: 'GET',
+      url: 'https://x/y',
+      seq: 2,
+      revision: 6,
+      spec: { headers: [{ name: 'a', value: '1' }] }
+    });
+    expect(folderId).toBe('f9');
+    expect(collectionId).toBe('c1');
+    expect(item).toMatchObject({
+      uid: 'r1',
+      name: 'Ping',
+      type: 'http-request',
+      revision: 6,
+      request: { method: 'GET', url: 'https://x/y', headers: [{ name: 'a', value: '1' }] }
+    });
+  });
+});
+
 describe('backendTreeToClientTree', () => {
   it('produces the collectionLoadedFromTree payload', () => {
     const tree = backendTreeToClientTree({

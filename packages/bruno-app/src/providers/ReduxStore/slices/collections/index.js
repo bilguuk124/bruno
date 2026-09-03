@@ -3670,6 +3670,58 @@ export const collectionsSlice = createSlice({
       }
       addDepth(collection.items);
     },
+
+    /**
+     * Applies one realtime change-feed delta to a team collection's tree. The
+     * incoming item is already mapped to Bruno's shape by the transport layer.
+     * `update` merges server-owned fields (name/seq/revision/request) while
+     * keeping the user's draft and collapse state; a stale or echoed frame
+     * (revision <= what we hold) is ignored. `create`/`delete`/`move` are
+     * handled by the middleware (granular delete, refetch otherwise), not here.
+     */
+    applyBackendItemChange: (state, action) => {
+      const { collectionUid, entityType, item: incoming } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      if (!collection || !incoming) return;
+
+      if (entityType === 'collection') {
+        if (incoming.name) collection.name = incoming.name;
+        if (incoming.root && typeof incoming.root === 'object') collection.root = incoming.root;
+        if (typeof incoming.revision === 'number') collection.revision = incoming.revision;
+        return;
+      }
+
+      const existing = findItemInCollection(collection, incoming.uid);
+      if (!existing) return;
+      if (typeof existing.revision === 'number' && incoming.revision <= existing.revision) return;
+
+      existing.name = incoming.name;
+      existing.seq = incoming.seq;
+      existing.revision = incoming.revision;
+      if (incoming.type === 'folder') {
+        existing.root = incoming.root;
+      } else if (incoming.type === 'js' || incoming.type === 'app') {
+        existing.fileContent = incoming.fileContent;
+      } else {
+        existing.request = incoming.request;
+        if (existing.draft && areItemsTheSameExceptSeqUpdate(existing.draft, incoming)) {
+          existing.draft = null;
+        }
+      }
+    },
+
+    /** Post-write bookkeeping for a team collection item: stamp the server
+     * revision and record (or clear) a save error. */
+    setItemSyncState: (state, action) => {
+      const { collectionUid, itemUid, revision, saveError } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      const item = collection ? findItemInCollection(collection, itemUid) : null;
+      if (!item) return;
+      if (typeof revision === 'number') item.revision = revision;
+      if (saveError === null) delete item.saveError;
+      else if (saveError !== undefined) item.saveError = saveError;
+    },
+
     collectionAddOauth2CredentialsByUrl: (state, action) => {
       const { collectionUid, folderUid, itemUid, url, credentials, credentialsId, debugInfo, executionMode } = action.payload;
       const collection = findCollectionByUid(state.collections, collectionUid);
@@ -4112,6 +4164,8 @@ export const {
   deleteItem,
   renameItem,
   cloneItem,
+  applyBackendItemChange,
+  setItemSyncState,
   scriptEnvironmentUpdateEvent,
   runtimeVariablesUpdateEvent,
   processEnvUpdateEvent,

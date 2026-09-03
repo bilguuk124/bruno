@@ -1,8 +1,14 @@
 import { createListenerMiddleware } from '@reduxjs/toolkit';
 import transport from 'transport';
 import SyncSocket from 'transport/sync';
+import { changePatchToItem } from 'transport/treeMapping';
+import { findCollectionByUid, findItemInCollection } from 'utils/collections';
 import { setActiveWorkspace } from 'providers/ReduxStore/slices/workspaces';
-import { removeCollection } from 'providers/ReduxStore/slices/collections';
+import {
+  removeCollection,
+  deleteItem as removeItemFromTree,
+  applyBackendItemChange
+} from 'providers/ReduxStore/slices/collections';
 import {
   TEAM_PREFIX,
   backendSyncStatusChanged,
@@ -51,21 +57,54 @@ const scheduleRefetch = (dispatch, backendCollectionId) => {
   );
 };
 
+const ITEM_ENTITIES = new Set(['request', 'folder', 'file']);
+
 /**
- * Apply one backend change event. For now any entity change re-pulls the
- * affected collection's tree (mergeTreeItems keeps drafts + expansion state);
- * granular per-item deltas are a later optimization.
+ * Apply one backend change event to the loaded tree.
+ *
+ * `update` to an item we already hold is applied granularly (revision-deduped,
+ * drafts preserved) — this is the hot path while a teammate edits requests.
+ * `delete` removes the item by id. `create`, `move`, and an `update` to an
+ * item we don't have yet (we missed its create) fall back to a debounced
+ * full-tree refetch, since those change the tree's shape.
  */
-const applyChangeEvent = (dispatch, ev) => {
-  if (ev.entityType === 'collection' && ev.op === 'delete') {
-    dispatch(removeCollection({ collectionUid: TEAM_PREFIX + ev.entityId }));
+const applyChangeEvent = (api, ev) => {
+  const backendCollectionId = ev.entityType === 'collection' ? ev.entityId : ev.patch && ev.patch.collectionId;
+  const collectionUid = backendCollectionId ? TEAM_PREFIX + backendCollectionId : null;
+
+  if (ev.entityType === 'collection') {
+    if (ev.op === 'delete') {
+      api.dispatch(removeCollection({ collectionUid }));
+      return;
+    }
+    api.dispatch(
+      applyBackendItemChange({
+        collectionUid,
+        entityType: 'collection',
+        item: { name: ev.patch?.name, root: ev.patch?.rootSpec, revision: ev.patch?.revision }
+      })
+    );
     return;
   }
-  const backendCollectionId
-    = ev.entityType === 'collection' ? ev.entityId : ev.patch && ev.patch.collectionId;
-  if (backendCollectionId) {
-    scheduleRefetch(dispatch, backendCollectionId);
+
+  if (!ITEM_ENTITIES.has(ev.entityType) || !collectionUid) return;
+
+  const collection = findCollectionByUid(api.getState().collections.collections, collectionUid);
+  if (!collection) return; // collection not loaded — nothing to sync
+
+  if (ev.op === 'delete') {
+    api.dispatch(removeItemFromTree({ itemUid: ev.entityId, collectionUid }));
+    return;
   }
+
+  if (ev.op === 'update' && findItemInCollection(collection, ev.patch?.id || ev.entityId)) {
+    api.dispatch(
+      applyBackendItemChange({ collectionUid, entityType: ev.entityType, item: changePatchToItem(ev.patch).item })
+    );
+    return;
+  }
+
+  scheduleRefetch(api.dispatch, backendCollectionId);
 };
 
 backendSyncMiddleware.startListening({
@@ -86,7 +125,7 @@ backendSyncMiddleware.startListening({
     socketWorkspaceId = backendId;
     socket = new SyncSocket({
       workspaceId: backendId,
-      onEvent: (ev) => applyChangeEvent(api.dispatch, ev),
+      onEvent: (ev) => applyChangeEvent(api, ev),
       onStatus: (status) =>
         api.dispatch(backendSyncStatusChanged({ workspaceId: backendId, status: `ws:${status}` }))
     });
