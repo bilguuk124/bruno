@@ -1,6 +1,10 @@
 import BackendError from './BackendError';
 import { apiUrl, getToken, clearSession } from './config';
 
+// So the backend records `client_kind` on the session (shown in the "active
+// sessions" list). The Electron preload bridge is the reliable desktop signal.
+const CLIENT_KIND = typeof window !== 'undefined' && window.ipcRenderer ? 'desktop' : 'web';
+
 /**
  * Thin REST client for the Newton backend. One instance is created in
  * transport/index.js. Methods return parsed JSON (or undefined for 204) and
@@ -12,7 +16,7 @@ import { apiUrl, getToken, clearSession } from './config';
 export default class BackendClient {
   async request(method, path, { body, headers, ifMatch, signal } = {}) {
     const token = getToken();
-    const finalHeaders = { ...headers };
+    const finalHeaders = { 'X-Bruno-Client': CLIENT_KIND, ...headers };
     if (token) {
       finalHeaders['Authorization'] = `Bearer ${token}`;
     }
@@ -98,6 +102,22 @@ export default class BackendClient {
 
   me() {
     return this.get('/auth/me');
+  }
+
+  refresh() {
+    return this.post('/auth/refresh');
+  }
+
+  listSessions() {
+    return this.get('/auth/sessions');
+  }
+
+  revokeSession(id) {
+    return this.del(`/auth/sessions/${id}`);
+  }
+
+  revokeOtherSessions() {
+    return this.post('/auth/sessions/revoke-others');
   }
 
   // --- workspaces ---

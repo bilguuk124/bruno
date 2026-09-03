@@ -82,9 +82,12 @@ export const {
 } = slice.actions;
 
 /**
- * On app boot: if a backend URL + token are already stored, validate the
- * session with /auth/me. An invalid token is cleared and the UI falls back to
- * the login prompt.
+ * On app boot: if a backend URL + token are already stored, call /auth/refresh
+ * to validate and rotate the session. Rotating on every launch keeps the
+ * 30-day expiry sliding, so an active user is never forced to log in again.
+ *
+ * A 401/403 clears the stored token and drops to the login prompt; a mere
+ * "backend unreachable" keeps the token so the next launch retries.
  */
 export const initBackendConnection = () => async (dispatch) => {
   if (!config.isBackendConfigured()) {
@@ -97,11 +100,14 @@ export const initBackendConnection = () => async (dispatch) => {
   }
   dispatch(backendStatusChanged({ status: 'connecting' }));
   try {
-    const me = await transport.backend.me();
-    dispatch(backendUserLoaded(me.user || me));
+    const res = await transport.backend.refresh();
+    config.setToken(res.token);
+    dispatch(backendUserLoaded(res.user));
     dispatch(loadTeamWorkspaces());
   } catch (err) {
-    config.clearSession();
+    if (err && err.isAuthError) {
+      config.clearSession();
+    }
     dispatch(backendStatusChanged({ status: 'unauthenticated', error: null }));
   }
 };

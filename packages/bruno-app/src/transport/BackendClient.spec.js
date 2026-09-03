@@ -24,13 +24,26 @@ afterEach(() => {
   delete global.fetch;
 });
 
-it('sends the bearer token and parses JSON', async () => {
+it('sends the bearer token, the client-kind header, and parses JSON', async () => {
   global.fetch.mockReturnValue(jsonResponse(200, { workspaces: [] }));
   const out = await client.listWorkspaces();
   expect(out).toEqual({ workspaces: [] });
   const [url, init] = global.fetch.mock.calls[0];
   expect(url).toBe('https://n.example.com/api/v1/workspaces');
   expect(init.headers['Authorization']).toBe('Bearer tok_abc');
+  expect(init.headers['X-Bruno-Client']).toBe('web'); // jsdom has no window.ipcRenderer
+});
+
+it('exposes the session-management endpoints', async () => {
+  global.fetch.mockReturnValue(jsonResponse(200, { token: 't2', user: { id: 'u1' } }));
+  await client.refresh();
+  expect(global.fetch.mock.calls[0][0]).toBe('https://n.example.com/api/v1/auth/refresh');
+
+  global.fetch.mockReturnValue(jsonResponse(204));
+  await client.revokeSession('sess-9');
+  const [url, init] = global.fetch.mock.calls[1];
+  expect(url).toBe('https://n.example.com/api/v1/auth/sessions/sess-9');
+  expect(init.method).toBe('DELETE');
 });
 
 it('serializes a JSON body and sets content-type', async () => {

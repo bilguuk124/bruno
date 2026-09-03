@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import toast from 'react-hot-toast';
 import Button from 'ui/Button';
 import { connectAndAuthenticate, logoutBackend, disconnectBackend } from 'providers/ReduxStore/slices/backend';
+import ActiveSessions from './ActiveSessions';
 import StyledWrapper from './StyledWrapper';
 
 /**
@@ -67,14 +68,17 @@ const Connection = () => {
       {error ? <div className="error-text">{error}</div> : null}
 
       {connected ? (
-        <div className="actions">
-          <Button color="secondary" size="sm" onClick={handleLogout}>
-            Log out
-          </Button>
-          <Button color="secondary" variant="outline" size="sm" onClick={handleDisconnect}>
-            Disconnect
-          </Button>
-        </div>
+        <>
+          <div className="actions">
+            <Button color="secondary" size="sm" onClick={handleLogout}>
+              Log out
+            </Button>
+            <Button color="secondary" variant="outline" size="sm" onClick={handleDisconnect}>
+              Disconnect
+            </Button>
+          </div>
+          <ActiveSessions />
+        </>
       ) : (
         <form className="connection-form" onSubmit={handleConnect}>
           <div>
@@ -133,7 +137,7 @@ const Connection = () => {
             ) : null}
           </div>
           <button type="button" className="link-button" onClick={() => setRegister((v) => !v)}>
-            {register ? 'Have an account? Sign in' : "First time? Create an account"}
+            {register ? 'Have an account? Sign in' : 'First time? Create an account'}
           </button>
         </form>
       )}
