@@ -9,9 +9,46 @@
  * is used both when loading a tree and when creating items on the backend.
  */
 
+import { defaultsDeep } from 'lodash';
+import { DEFAULT_HTTP_ITEM_SETTINGS } from '@usebruno/common';
+
 const REQUEST_KINDS = ['http-request', 'graphql-request', 'grpc-request', 'ws-request'];
 
 const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+
+// The backend keeps a request's spec opaque, so a row can legitimately hold a
+// sparse spec (e.g. just method + url from an import or the seed script). The
+// request pane assumes a fully-populated shape, so fill the gaps here — the
+// same skeleton newHttpRequest builds in the filesystem path.
+const REQUEST_SPEC_DEFAULTS = {
+  headers: [],
+  auth: { mode: 'inherit' },
+  vars: { req: [], res: [] },
+  assertions: [],
+  script: { req: null, res: null },
+  tests: null,
+  docs: ''
+};
+
+const HTTP_SPEC_DEFAULTS = {
+  ...REQUEST_SPEC_DEFAULTS,
+  params: [],
+  body: {
+    mode: 'none',
+    json: null,
+    text: null,
+    xml: null,
+    sparql: null,
+    multipartForm: [],
+    formUrlEncoded: [],
+    file: []
+  }
+};
+
+const hydrateRequestSpec = (kind, request) => {
+  const skeleton = kind === 'grpc-request' || kind === 'ws-request' ? REQUEST_SPEC_DEFAULTS : HTTP_SPEC_DEFAULTS;
+  return defaultsDeep({}, request, skeleton);
+};
 
 /** One backend TreeNode -> one Bruno item. */
 export const nodeToItem = (node) => {
@@ -39,11 +76,13 @@ export const nodeToItem = (node) => {
   return {
     ...base,
     type: node.kind,
-    request: {
+    // the backend has no per-request settings column yet; the request pane needs the object
+    settings: { ...DEFAULT_HTTP_ITEM_SETTINGS },
+    request: hydrateRequestSpec(node.kind, {
       ...spec,
       method: node.method ?? spec.method ?? 'GET',
       url: node.url ?? spec.url ?? ''
-    }
+    })
   };
 };
 

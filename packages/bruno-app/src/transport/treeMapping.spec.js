@@ -12,7 +12,7 @@ describe('nodeToItem', () => {
       url: 'https://api.example.com/ping',
       spec: { headers: [{ name: 'x', value: '1' }], method: 'POST', url: 'stale' }
     });
-    expect(item).toEqual({
+    expect(item).toMatchObject({
       uid: 'r1',
       name: 'Ping',
       seq: 2,
@@ -24,6 +24,26 @@ describe('nodeToItem', () => {
         url: 'https://api.example.com/ping'
       }
     });
+  });
+
+  it('hydrates a sparse spec to the full request shape the request pane expects', () => {
+    const item = nodeToItem({
+      id: 'r1',
+      kind: 'http-request',
+      name: 'Health',
+      seq: 1,
+      revision: 1,
+      method: 'GET',
+      url: 'https://x/health',
+      spec: { method: 'GET', url: 'https://x/health' }
+    });
+    expect(item.request.params).toEqual([]);
+    expect(item.request.headers).toEqual([]);
+    expect(item.request.assertions).toEqual([]);
+    expect(item.request.auth).toEqual({ mode: 'inherit' });
+    expect(item.request.vars).toEqual({ req: [], res: [] });
+    expect(item.request.body.mode).toBe('none');
+    expect(item.settings).toEqual({ encodeUrl: true, forwardAuthorizationHeader: false });
   });
 
   it('recurses folders and carries rootSpec', () => {
@@ -64,7 +84,7 @@ describe('itemToNode round-trips', () => {
     expect(node).toMatchObject({ kind: 'http-request', name: 'Ping', method: 'POST', url: 'https://x/y' });
     expect(node.spec).toEqual(original.request);
     const back = nodeToItem({ ...node, id: 'r1', seq: 3, revision: 1 });
-    expect(back.request.body).toEqual({ mode: 'json', json: '{}' });
+    expect(back.request.body).toMatchObject({ mode: 'json', json: '{}' });
   });
 });
 
