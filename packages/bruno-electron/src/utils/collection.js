@@ -277,12 +277,15 @@ const mergeScripts = (collection, request, requestTreePath, scriptFlow) => {
   let collectionPostResScript = get(collectionRoot, 'request.script.res', '');
   let collectionTests = get(collectionRoot, 'request.tests', '');
 
-  // Build source file info for error trace mapping
+  // Build source file info for error trace mapping. Backend-backed collections
+  // have no filesystem path — `filePath` stays null (the error formatter treats
+  // a non-string as "no on-disk source" and degrades to line numbers only).
   const format = collection.format || 'bru';
   const config = FORMAT_CONFIG[format];
+  const hasFilesystem = Boolean(collection.pathname);
   const collectionSource = {
     type: 'collection',
-    filePath: path.join(collection.pathname, config.collectionFile),
+    filePath: hasFilesystem ? path.join(collection.pathname, config.collectionFile) : null,
     displayPath: config.collectionFile
   };
 
@@ -307,8 +310,10 @@ const mergeScripts = (collection, request, requestTreePath, scriptFlow) => {
       const folderRoot = i?.draft || i?.root;
       const folderSource = {
         type: 'folder',
-        filePath: path.join(i.pathname, config.folderFile),
-        displayPath: posixifyPath(path.relative(collection.pathname, path.join(i.pathname, config.folderFile)))
+        filePath: hasFilesystem ? path.join(i.pathname, config.folderFile) : null,
+        displayPath: hasFilesystem
+          ? posixifyPath(path.relative(collection.pathname, path.join(i.pathname, config.folderFile)))
+          : posixifyPath(path.join(i.name || 'folder', config.folderFile))
       };
 
       let preReqScript = get(folderRoot, 'request.script.req', '');

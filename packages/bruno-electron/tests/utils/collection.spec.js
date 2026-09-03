@@ -542,4 +542,16 @@ describe('mergeScripts metadata', () => {
 
     expect(request.script.resMetadata.requestScriptContent).toBe('let req = 2;');
   });
+
+  test('backend-backed collection (no pathname) merges scripts with null filePath', () => {
+    const collection = { format: 'bru', root: { request: { script: { req: 'let col = 1;' } } } };
+    const folder = { type: 'folder', name: 'Users', root: { request: { script: { req: 'let fold = 2;' } } } };
+    const request = makeRequest({ preReq: 'let req = 3;' });
+
+    expect(() => mergeScripts(collection, request, [folder, request], 'sequential')).not.toThrow();
+    const segments = request.script.reqMetadata.segments;
+    expect(segments).toHaveLength(2);
+    expect(segments[0]).toMatchObject({ displayPath: 'collection.bru', filePath: null });
+    expect(segments[1]).toMatchObject({ displayPath: 'Users/folder.bru', filePath: null });
+  });
 });
