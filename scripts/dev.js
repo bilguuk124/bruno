@@ -28,9 +28,16 @@ const electronDir = path.join(rootDir, 'packages/bruno-electron');
 
 let electronProcess = null;
 let detectedPort = null;
+let fallbackTimer = null;
 
-// Regex to match rsbuild's local URL output (e.g., "➜ Local:    http://localhost:3000/")
-const portRegex = /Local:\s+http:\/\/localhost:(\d+)/;
+// rsbuild prints "Local:    http://localhost:<port>/" on startup, with ANSI
+// codes between the label and the URL, and on Windows sometimes on stderr — so
+// strip colours and watch both streams. Fall back to a default port if the
+// banner never parses, otherwise Electron would never launch.
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+const portRegex = /Local:\s*http:\/\/localhost:(\d+)/;
+const FALLBACK_PORT = process.env.BRUNO_DEV_PORT || '3000';
+const FALLBACK_DELAY_MS = 90000;
 
 console.log(`\n${colors.bright}${colors.yellow}🚀 Starting Bruno development environment...${colors.reset}\n`);
 
@@ -41,29 +48,47 @@ const webProcess = spawn('npm', ['run', 'dev'], {
   shell: true
 });
 
-webProcess.stdout.on('data', (data) => {
-  const output = data.toString();
-  process.stdout.write(output);
-
-  // Try to detect the port from rsbuild output
-  if (!detectedPort) {
-    const match = output.match(portRegex);
-    if (match) {
-      detectedPort = match[1];
-      log.success(`Detected dev server on port ${colors.bright}${detectedPort}${colors.reset}`);
-      startElectron(detectedPort);
-    }
+const useDetectedPort = (port, source) => {
+  if (detectedPort) {
+    return;
   }
+  clearTimeout(fallbackTimer);
+  detectedPort = port;
+  log.success(`Detected dev server on port ${colors.bright}${detectedPort}${colors.reset} (${source})`);
+  startElectron(detectedPort);
+};
+
+const scanForPort = (data) => {
+  if (detectedPort) {
+    return;
+  }
+  const match = stripAnsi(data.toString()).match(portRegex);
+  if (match) {
+    useDetectedPort(match[1], 'rsbuild');
+  }
+};
+
+webProcess.stdout.on('data', (data) => {
+  process.stdout.write(data);
+  scanForPort(data);
 });
 
 webProcess.stderr.on('data', (data) => {
-  process.stderr.write(data.toString());
+  process.stderr.write(data);
+  scanForPort(data);
 });
 
 webProcess.on('close', (code) => {
   log.info(`Web process exited with code ${code}`);
   cleanup();
 });
+
+fallbackTimer = setTimeout(() => {
+  if (!detectedPort) {
+    log.warn(`Could not read the dev-server port from rsbuild output; assuming ${FALLBACK_PORT}`);
+    useDetectedPort(FALLBACK_PORT, 'fallback');
+  }
+}, FALLBACK_DELAY_MS);
 
 function startElectron(port) {
   log.info(`Starting Electron with ${colors.cyan}BRUNO_DEV_PORT=${port}${colors.reset}`);
@@ -85,6 +110,7 @@ function startElectron(port) {
 }
 
 function cleanup() {
+  clearTimeout(fallbackTimer);
   if (webProcess && !webProcess.killed) {
     webProcess.kill();
   }
