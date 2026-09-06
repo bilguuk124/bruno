@@ -15,6 +15,19 @@ import {
   collectionLoadedFromTree
 } from 'providers/ReduxStore/slices/collections';
 
+/** Run `fn` over `items` at most `limit` at a time. */
+const mapWithConcurrency = async (items, limit, fn) => {
+  const queue = [...items.entries()];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    for (;;) {
+      const next = queue.shift();
+      if (!next) return;
+      await fn(next[1], next[0]);
+    }
+  });
+  await Promise.all(workers);
+};
+
 /** Team (backend) workspaces and their collections are keyed `team:<backendId>`. */
 export const TEAM_PREFIX = 'team:';
 export const isTeamUid = (uid) => typeof uid === 'string' && uid.startsWith(TEAM_PREFIX);
@@ -243,7 +256,9 @@ export const switchToTeamWorkspace = (workspaceUid) => async (dispatch, getState
   }
   dispatch(updateWorkspace({ uid: workspaceUid, collections: wsCollections }));
 
-  await Promise.all(cols.map((c) => dispatch(refetchTeamCollectionTree(c.id))));
+  // The collection list already renders; stream the trees in with a bounded
+  // fan-out so a big workspace doesn't fire one request per collection at once.
+  await mapWithConcurrency(cols, 5, (c) => dispatch(refetchTeamCollectionTree(c.id)));
 
   dispatch(backendSyncStatusChanged({ workspaceId: backendId, status: 'ready' }));
 };
