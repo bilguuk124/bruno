@@ -2,12 +2,14 @@ import { createListenerMiddleware } from '@reduxjs/toolkit';
 import transport from 'transport';
 import SyncSocket from 'transport/sync';
 import { changePatchToItem } from 'transport/treeMapping';
-import { findCollectionByUid, findItemInCollection } from 'utils/collections';
+import { findCollectionByUid, findItemInCollection, findParentItemInCollection } from 'utils/collections';
 import { setActiveWorkspace } from 'providers/ReduxStore/slices/workspaces';
 import {
   removeCollection,
   deleteItem as removeItemFromTree,
-  applyBackendItemChange
+  applyBackendItemChange,
+  applyBackendItemCreate,
+  applyBackendItemMove
 } from 'providers/ReduxStore/slices/collections';
 import {
   TEAM_PREFIX,
@@ -57,7 +59,7 @@ const scheduleRefetch = (dispatch, backendCollectionId) => {
   );
 };
 
-const ITEM_ENTITIES = new Set(['request', 'folder', 'file']);
+const ITEM_ENTITIES = new Set(['request', 'folder', 'collection_file']);
 const ENVIRONMENT_ENTITIES = new Set(['environment', 'environment_variable']);
 
 /** Every loaded team collection belonging to the active team workspace. */
@@ -66,14 +68,21 @@ const teamCollectionsInWorkspace = (state, workspaceBackendId) =>
     (c) => c.origin === 'team' && c.workspaceBackendId === workspaceBackendId
   );
 
+const parentIdOf = (collection, itemUid) => {
+  const parent = findParentItemInCollection(collection, itemUid);
+  return parent ? parent.uid : null;
+};
+
 /**
- * Apply one backend change event to the loaded tree.
+ * Apply one backend change event to the loaded tree, granularly wherever
+ * possible so team churn doesn't trigger full-tree refetches:
  *
- * `update` to an item we already hold is applied granularly (revision-deduped,
- * drafts preserved) — this is the hot path while a teammate edits requests.
- * `delete` removes the item by id. `create`, `move`, and an `update` to an
- * item we don't have yet (we missed its create) fall back to a debounced
- * full-tree refetch, since those change the tree's shape.
+ * - `create` inserts the node under its parent (unless the parent isn't loaded).
+ * - `update` to an item we hold either edits it in place (revision-deduped,
+ *   drafts preserved) or, if its parent changed, relocates it.
+ * - `delete` removes it by id.
+ * - An `update`/`create` we can't place (missing parent, unknown item) falls
+ *   back to a debounced full-tree refetch.
  */
 const applyChangeEvent = (api, ev) => {
   const backendCollectionId = ev.entityType === 'collection' ? ev.entityId : ev.patch && ev.patch.collectionId;
@@ -117,10 +126,34 @@ const applyChangeEvent = (api, ev) => {
     return;
   }
 
-  if (ev.op === 'update' && findItemInCollection(collection, ev.patch?.id || ev.entityId)) {
-    api.dispatch(
-      applyBackendItemChange({ collectionUid, entityType: ev.entityType, item: changePatchToItem(ev.patch).item })
-    );
+  const { item: incoming, folderId } = changePatchToItem(ev.patch);
+  const parentLoaded = !folderId || Boolean(findItemInCollection(collection, folderId));
+
+  if (ev.op === 'create') {
+    if (findItemInCollection(collection, incoming.uid)) return; // already have it
+    if (!parentLoaded) {
+      scheduleRefetch(api.dispatch, backendCollectionId);
+      return;
+    }
+    api.dispatch(applyBackendItemCreate({ collectionUid, parentFolderId: folderId, item: incoming }));
+    return;
+  }
+
+  if (ev.op === 'update') {
+    const existing = findItemInCollection(collection, incoming.uid);
+    if (!existing) {
+      scheduleRefetch(api.dispatch, backendCollectionId);
+      return;
+    }
+    if ((folderId || null) !== parentIdOf(collection, existing.uid)) {
+      if (!parentLoaded) {
+        scheduleRefetch(api.dispatch, backendCollectionId);
+        return;
+      }
+      api.dispatch(applyBackendItemMove({ collectionUid, itemUid: existing.uid, parentFolderId: folderId, incoming }));
+      return;
+    }
+    api.dispatch(applyBackendItemChange({ collectionUid, entityType: ev.entityType, item: incoming }));
     return;
   }
 

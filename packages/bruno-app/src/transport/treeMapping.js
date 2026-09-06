@@ -88,13 +88,14 @@ export const nodeToItem = (node) => {
 
 /**
  * A WS `change` frame's `patch` is the backend row, not a TreeNode: it uses
- * `type` where a node uses `kind`, and carries `collectionId` / `folderId`.
- * Normalize it to a Bruno item; `folderId` is returned separately for tree
- * placement.
+ * `type` where a node uses `kind`, and carries `collectionId` plus the parent
+ * id — `folderId` on a request/file row, `parentFolderId` on a folder row.
+ * Normalize it to a Bruno item; the parent id is returned as `folderId` for
+ * tree placement (null = collection root).
  */
 export const changePatchToItem = (patch) => ({
   item: nodeToItem({ ...patch, kind: patch.kind ?? patch.type }),
-  folderId: patch.folderId ?? null,
+  folderId: patch.folderId ?? patch.parentFolderId ?? null,
   collectionId: patch.collectionId ?? null
 });
 

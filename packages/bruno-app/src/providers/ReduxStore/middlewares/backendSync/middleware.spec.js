@@ -81,3 +81,78 @@ it('reconnects when switching between two team workspaces', () => {
   expect(SyncSocket).toHaveBeenCalledTimes(2);
   expect(SyncSocket.mock.calls[1][0].workspaceId).toBe('xyz');
 });
+
+describe('applyChangeEvent — granular tree sync', () => {
+  const collectionUid = 'team:c1';
+  const loadedCollection = (items) => ({
+    origin: 'team',
+    uid: collectionUid,
+    backendId: 'c1',
+    workspaceBackendId: 'abc',
+    items,
+    environments: []
+  });
+
+  // A store whose collections slice holds one loaded team collection and
+  // records the actions the middleware dispatches into it.
+  const makeSyncStore = (items) => {
+    const dispatched = [];
+    const store = configureStore({
+      reducer: {
+        workspaces: (state = { workspaces: [{ uid: 'team:abc', type: 'team', backendId: 'abc' }], activeWorkspaceUid: null }, action) =>
+          action.type === setActiveWorkspace.type ? { ...state, activeWorkspaceUid: action.payload } : state,
+        collections: (state = { collections: [loadedCollection(items)] }, action) => {
+          if (action.type.startsWith('collections/')) dispatched.push(action);
+          return state;
+        },
+        backend: (state = {}) => state
+      },
+      middleware: (getDefault) => getDefault().prepend(backendSyncMiddleware.middleware)
+    });
+    store.dispatch(setActiveWorkspace('team:abc'));
+    return { store, onEvent: SyncSocket.mock.calls.at(-1)[0].onEvent, dispatched };
+  };
+
+  it('a create event under a loaded folder inserts granularly (no refetch)', () => {
+    const { onEvent, dispatched } = makeSyncStore([{ uid: 'f1', type: 'folder', name: 'Users', items: [] }]);
+    onEvent({
+      entityType: 'request',
+      entityId: 'r1',
+      op: 'create',
+      patch: { id: 'r1', type: 'http-request', name: 'List', collectionId: 'c1', folderId: 'f1', seq: 1, spec: {} }
+    });
+    expect(dispatched.map((a) => a.type)).toContain('collections/applyBackendItemCreate');
+    expect(dispatched.map((a) => a.type)).not.toContain('collections/collectionLoadedFromTree');
+  });
+
+  it('an update that changes the parent relocates granularly', () => {
+    const { onEvent, dispatched } = makeSyncStore([
+      { uid: 'f1', type: 'folder', name: 'Users', items: [] },
+      { uid: 'r1', type: 'http-request', name: 'List', request: {}, revision: 1 }
+    ]);
+    onEvent({
+      entityType: 'request',
+      entityId: 'r1',
+      op: 'update',
+      patch: { id: 'r1', type: 'http-request', name: 'List', collectionId: 'c1', folderId: 'f1', seq: 2, revision: 2, spec: {} }
+    });
+    const types = dispatched.map((a) => a.type);
+    expect(types).toContain('collections/applyBackendItemMove');
+    expect(types).not.toContain('collections/applyBackendItemChange');
+  });
+
+  it('an update with the same parent edits in place', () => {
+    const { onEvent, dispatched } = makeSyncStore([
+      { uid: 'r1', type: 'http-request', name: 'List', request: {}, revision: 1 }
+    ]);
+    onEvent({
+      entityType: 'request',
+      entityId: 'r1',
+      op: 'update',
+      patch: { id: 'r1', type: 'http-request', name: 'Renamed', collectionId: 'c1', folderId: null, seq: 0, revision: 2, spec: {} }
+    });
+    const types = dispatched.map((a) => a.type);
+    expect(types).toContain('collections/applyBackendItemChange');
+    expect(types).not.toContain('collections/applyBackendItemMove');
+  });
+});

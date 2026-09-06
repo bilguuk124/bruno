@@ -14,6 +14,7 @@ import {
   findEnvironmentInCollection,
   findItemInCollection,
   findItemInCollectionByPathname,
+  findParentItemInCollection,
   isItemAFolder,
   isItemARequest
 } from 'utils/collections';
@@ -3757,6 +3758,58 @@ export const collectionsSlice = createSlice({
       }
     },
 
+    /**
+     * A teammate created an item — insert it under its parent. The sidebar
+     * orders siblings by `seq` at render time, so array position doesn't
+     * matter; the item just has to be in the right parent's `items`. A no-op
+     * if we already hold it (our own optimistic create, echoed back).
+     */
+    applyBackendItemCreate: (state, action) => {
+      const { collectionUid, parentFolderId, item } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      if (!collection || findItemInCollection(collection, item.uid)) return;
+
+      const target = parentFolderId ? findItemInCollection(collection, parentFolderId) : collection;
+      if (!target) return; // parent not loaded — the middleware falls back to a refetch
+
+      target.items = target.items || [];
+      target.items.push(item);
+      addDepth(collection.items);
+    },
+
+    /**
+     * A teammate moved an item to a different parent. Relocate the item we
+     * already hold — keeping its draft, collapse and response state — and
+     * refresh its server-owned fields.
+     */
+    applyBackendItemMove: (state, action) => {
+      const { collectionUid, itemUid, parentFolderId, incoming } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      if (!collection) return;
+
+      const existing = findItemInCollection(collection, itemUid);
+      if (!existing) return;
+      const target = parentFolderId ? findItemInCollection(collection, parentFolderId) : collection;
+      if (!target) return;
+
+      const parent = findParentItemInCollection(collection, itemUid);
+      const siblings = parent ? parent.items : collection.items;
+      const idx = siblings.indexOf(existing);
+      if (idx === -1) return;
+      siblings.splice(idx, 1);
+
+      existing.name = incoming.name;
+      existing.seq = incoming.seq;
+      existing.revision = incoming.revision;
+      if (incoming.type === 'folder') existing.root = incoming.root;
+      else if (incoming.type === 'js' || incoming.type === 'app') existing.fileContent = incoming.fileContent;
+      else if (!existing.draft) existing.request = incoming.request;
+
+      target.items = target.items || [];
+      target.items.push(existing);
+      addDepth(collection.items);
+    },
+
     /** Record a merge conflict on a team item — a 412 on save, a remote edit
      * while a draft is open, or the item being deleted upstream. Drives the
      * RequestConflictBanner. `conflict = { kind: 'revision'|'deleted', server?,
@@ -4231,6 +4284,8 @@ export const {
   renameItem,
   cloneItem,
   applyBackendItemChange,
+  applyBackendItemCreate,
+  applyBackendItemMove,
   setItemSyncState,
   setItemConflict,
   clearItemConflict,
