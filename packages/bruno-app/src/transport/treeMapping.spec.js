@@ -5,7 +5,8 @@ import {
   requestPatchBody,
   backendEnvToClientEnv,
   envVarCreateBody,
-  envVarPatchBody
+  envVarPatchBody,
+  brunoConfigToSettings
 } from './treeMapping';
 
 describe('nodeToItem', () => {
@@ -132,6 +133,23 @@ describe('backendTreeToClientTree', () => {
     expect(tree.brunoConfig).toEqual({ name: 'API', version: '1' });
     expect(tree.items[0].uid).toBe('r1');
     expect(tree.environments).toEqual([]);
+  });
+
+  it('folds the shared parts of collection.settings into brunoConfig, and back', () => {
+    const settings = { proxy: { enabled: true, hostname: 'p' }, presets: { requestType: 'http' }, clientCertificates: { certs: [] } };
+    const tree = backendTreeToClientTree({ collection: { id: 'c1', name: 'API', settings }, items: [] });
+    expect(tree.brunoConfig).toEqual({
+      name: 'API',
+      version: '1',
+      proxy: { enabled: true, hostname: 'p' },
+      presets: { requestType: 'http' }
+    });
+    // clientCertificates never round-trips to a shared collection
+    expect(tree.brunoConfig.clientCertificates).toBeUndefined();
+    expect(brunoConfigToSettings(tree.brunoConfig)).toEqual({
+      proxy: { enabled: true, hostname: 'p' },
+      presets: { requestType: 'http' }
+    });
   });
 
   it('maps backend environments (with variables) onto the tree', () => {

@@ -128,15 +128,35 @@ export const backendEnvToClientEnv = (env) => ({
   }))
 });
 
+// The parts of a Bruno `brunoConfig` (bruno.json) that a team collection keeps
+// in the backend's opaque `settings` blob. `name`/`version`/`type`/`ignore` are
+// column- or client-derived; `clientCertificates` reference local files and are
+// deliberately not synced to a shared collection.
+const TEAM_BRUNO_CONFIG_KEYS = ['proxy', 'presets', 'protobuf', 'scripts'];
+
 /** The backend GET /collections/:id/tree response -> the `tree` payload that collectionLoadedFromTree expects. */
 export const backendTreeToClientTree = (backendTree, { environments = [] } = {}) => {
   const collection = backendTree.collection || {};
+  const settings = isObject(collection.settings) ? collection.settings : {};
+  const brunoConfig = { name: collection.name, version: '1' };
+  for (const key of TEAM_BRUNO_CONFIG_KEYS) {
+    if (settings[key] !== undefined) brunoConfig[key] = settings[key];
+  }
   return {
     items: (backendTree.items || []).map(nodeToItem),
     environments: environments.map(backendEnvToClientEnv),
     root: isObject(collection.rootSpec) ? collection.rootSpec : {},
-    brunoConfig: { name: collection.name, version: '1' }
+    brunoConfig
   };
+};
+
+/** A team collection's `brunoConfig` -> the backend's opaque `settings` blob. */
+export const brunoConfigToSettings = (brunoConfig = {}) => {
+  const settings = {};
+  for (const key of TEAM_BRUNO_CONFIG_KEYS) {
+    if (brunoConfig[key] !== undefined) settings[key] = brunoConfig[key];
+  }
+  return settings;
 };
 
 /** A Bruno env variable -> the backend POST /environments/:id/variables body. */

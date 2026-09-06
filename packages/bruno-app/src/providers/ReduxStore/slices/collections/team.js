@@ -17,7 +17,8 @@ import {
   folderCreateBody,
   changePatchToItem,
   envVarCreateBody,
-  envVarPatchBody
+  envVarPatchBody,
+  brunoConfigToSettings
 } from 'transport/treeMapping';
 import { addTab, closeTabs } from 'providers/ReduxStore/slices/tabs';
 import {
@@ -533,8 +534,10 @@ export const teamSelectEnvironment = (environmentUid, collectionUid) => async (d
 /**
  * Collection- and folder-level settings for team collections. The collection's
  * `root` (auth / headers / vars / scripts / docs) round-trips through the
- * backend's opaque `rootSpec`; a folder's through `PATCH /folders/:id`. Both
- * carry `If-Match`; a stale write refetches and asks the user to retry.
+ * backend's opaque `rootSpec`, and the brunoConfig parts that make sense for a
+ * shared collection (proxy / presets / protobuf / scripts config) through
+ * `settings`. A folder's root goes through `PATCH /folders/:id`. All carry
+ * `If-Match`; a stale write refetches and asks the user to retry.
  */
 
 const stampCollectionRevision = (dispatch, collectionUid, revision) =>
@@ -543,10 +546,14 @@ const stampCollectionRevision = (dispatch, collectionUid, revision) =>
 export const teamSaveCollectionRoot = (collectionUid, silent = false) => async (dispatch, getState) => {
   const collection = findCollectionByUid(getState().collections.collections, collectionUid);
   if (!collection) throw new Error('Collection not found');
+  const brunoConfig = collection.draft?.brunoConfig || collection.brunoConfig;
   try {
     const updated = await transport.backend.updateCollection(
       collection.backendId,
-      { rootSpec: transformCollectionRootToSave(collection) },
+      {
+        rootSpec: transformCollectionRootToSave(collection),
+        settings: brunoConfigToSettings(brunoConfig)
+      },
       collection.revision
     );
     dispatch(saveCollectionDraft({ collectionUid }));
