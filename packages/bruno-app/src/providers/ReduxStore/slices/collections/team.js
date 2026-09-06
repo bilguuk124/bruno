@@ -6,7 +6,9 @@ import {
   findCollectionByUid,
   findItemInCollection,
   findParentItemInCollection,
-  findEnvironmentInCollection
+  findEnvironmentInCollection,
+  transformCollectionRootToSave,
+  transformFolderRootToSave
 } from 'utils/collections';
 import transport from 'transport';
 import {
@@ -29,7 +31,10 @@ import {
   setItemConflict,
   clearItemConflict,
   selectEnvironment as applyEnvironmentSelection,
-  updateEnvironmentSecrets
+  updateEnvironmentSecrets,
+  saveCollectionDraft,
+  saveFolderDraft,
+  renameCollection as applyCollectionName
 } from 'providers/ReduxStore/slices/collections';
 import { refetchTeamCollectionTree } from 'providers/ReduxStore/slices/backend';
 
@@ -523,4 +528,79 @@ export const teamSelectEnvironment = (environmentUid, collectionUid) => async (d
   teamEnv(getState, collectionUid, environmentUid);
   dispatch(applyEnvironmentSelection({ environmentUid, collectionUid }));
   if (environmentUid) await dispatch(revealTeamEnvironmentSecrets(environmentUid, collectionUid));
+};
+
+/**
+ * Collection- and folder-level settings for team collections. The collection's
+ * `root` (auth / headers / vars / scripts / docs) round-trips through the
+ * backend's opaque `rootSpec`; a folder's through `PATCH /folders/:id`. Both
+ * carry `If-Match`; a stale write refetches and asks the user to retry.
+ */
+
+const stampCollectionRevision = (dispatch, collectionUid, revision) =>
+  dispatch(applyBackendItemChange({ collectionUid, entityType: 'collection', item: { revision } }));
+
+export const teamSaveCollectionRoot = (collectionUid, silent = false) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (!collection) throw new Error('Collection not found');
+  try {
+    const updated = await transport.backend.updateCollection(
+      collection.backendId,
+      { rootSpec: transformCollectionRootToSave(collection) },
+      collection.revision
+    );
+    dispatch(saveCollectionDraft({ collectionUid }));
+    stampCollectionRevision(dispatch, collectionUid, updated.revision);
+    if (!silent) toast.success('Collection Settings saved successfully');
+  } catch (err) {
+    if (err.isRevisionConflict) {
+      await dispatch(refetchTeamCollectionTree(collection.backendId));
+      if (!silent) toast('These settings changed on the server — review and save again', { icon: '⚠️' });
+      return;
+    }
+    if (!silent) toast.error(err.message || 'Failed to save collection settings');
+    throw err;
+  }
+};
+
+export const teamSaveFolderRoot = (collectionUid, folderUid, silent = false) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  const folder = collection && findItemInCollection(collection, folderUid);
+  if (!folder) throw new Error('Folder not found');
+  try {
+    const updated = await transport.backend.updateFolder(
+      folderUid,
+      { rootSpec: transformFolderRootToSave(folder) },
+      folder.revision
+    );
+    if (folder.draft) dispatch(saveFolderDraft({ collectionUid, folderUid }));
+    dispatch(setItemSyncState({ collectionUid, itemUid: folderUid, revision: updated.revision, saveError: null }));
+    if (!silent) toast.success('Folder Settings saved successfully');
+  } catch (err) {
+    if (err.isRevisionConflict) {
+      await dispatch(refetchTeamCollectionTree(collection.backendId));
+      if (!silent) toast('This folder changed on the server — review and save again', { icon: '⚠️' });
+      return;
+    }
+    if (!silent) toast.error(err.message || 'Failed to save folder settings');
+    throw err;
+  }
+};
+
+export const teamRenameCollection = (newName, collectionUid) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (!collection) throw new Error('Collection not found');
+  const previousName = collection.name;
+  dispatch(applyCollectionName({ collectionUid, newName }));
+  try {
+    const updated = await transport.backend.updateCollection(collection.backendId, { name: newName }, collection.revision);
+    stampCollectionRevision(dispatch, collectionUid, updated.revision);
+  } catch (err) {
+    dispatch(applyCollectionName({ collectionUid, newName: previousName }));
+    if (err.isRevisionConflict) {
+      await dispatch(refetchTeamCollectionTree(collection.backendId));
+    }
+    toast.error(err.message || 'Failed to rename collection');
+    throw err;
+  }
 };

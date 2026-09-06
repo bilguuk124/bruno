@@ -94,7 +94,10 @@ import {
   teamSaveEnvironment,
   teamCopyEnvironment,
   teamImportEnvironment,
-  teamSelectEnvironment
+  teamSelectEnvironment,
+  teamSaveCollectionRoot,
+  teamSaveFolderRoot,
+  teamRenameCollection
 } from './team';
 export { revealTeamEnvironmentSecrets } from './team';
 export {
@@ -147,6 +150,9 @@ const copyDisplayName = (originalName) => `${originalName} copy`;
 export const renameCollection = (newName, collectionUid) => (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  if (collection?.origin === 'team') {
+    return dispatch(teamRenameCollection(newName, collectionUid));
+  }
 
   return new Promise((resolve, reject) => {
     if (!collection) {
@@ -295,6 +301,9 @@ export const saveMultipleRequests = (items) => (dispatch, getState) => {
 export const saveCollectionRoot = (collectionUid) => (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  if (collection?.origin === 'team') {
+    return dispatch(teamSaveCollectionRoot(collectionUid));
+  }
 
   return new Promise((resolve, reject) => {
     if (!collection) {
@@ -359,6 +368,9 @@ export const saveFolderRoot = (collectionUid, folderUid, silent = false) => (dis
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
   const folder = findItemInCollection(collection, folderUid);
+  if (collection?.origin === 'team') {
+    return dispatch(teamSaveFolderRoot(collectionUid, folderUid, silent));
+  }
 
   return new Promise((resolve, reject) => {
     if (!collection) {
@@ -2814,6 +2826,10 @@ export const exportCollectionToPostman = (location, fileName, content, overwrite
 export const saveCollectionSettings = (collectionUid, brunoConfig = null, silent = false) => (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  if (collection?.origin === 'team') {
+    // team collections have no bruno.json — proxy/sandbox/presets land in a later pass
+    return dispatch(teamSaveCollectionRoot(collectionUid, silent));
+  }
 
   return new Promise((resolve, reject) => {
     if (!collection) {

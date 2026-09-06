@@ -3715,8 +3715,14 @@ export const collectionsSlice = createSlice({
 
       if (entityType === 'collection') {
         if (incoming.name) collection.name = incoming.name;
-        if (incoming.root && typeof incoming.root === 'object') collection.root = incoming.root;
-        if (typeof incoming.revision === 'number') collection.revision = incoming.revision;
+        if (incoming.root && typeof incoming.root === 'object' && !collection.draft) {
+          collection.root = incoming.root;
+        }
+        // hold the revision back while a settings draft is open, so the next
+        // save 412s and surfaces the conflict rather than silently clobbering
+        if (typeof incoming.revision === 'number' && !collection.draft) {
+          collection.revision = incoming.revision;
+        }
         return;
       }
 

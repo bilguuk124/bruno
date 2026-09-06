@@ -148,6 +148,10 @@ export default class BackendClient {
     return this.get(`/collections/${collectionId}/tree`);
   }
 
+  updateCollection(collectionId, patch, revision) {
+    return this.patch(`/collections/${collectionId}`, patch, { ifMatch: revision });
+  }
+
   reorder(collectionId, body) {
     return this.post(`/collections/${collectionId}/reorder`, body);
   }
