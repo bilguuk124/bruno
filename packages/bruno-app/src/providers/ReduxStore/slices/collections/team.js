@@ -18,6 +18,7 @@ import {
   changePatchToItem,
   envVarCreateBody,
   envVarPatchBody,
+  backendVarToClientVar,
   brunoConfigToSettings
 } from 'transport/treeMapping';
 import { addTab, closeTabs } from 'providers/ReduxStore/slices/tabs';
@@ -33,6 +34,7 @@ import {
   clearItemConflict,
   selectEnvironment as applyEnvironmentSelection,
   updateEnvironmentSecrets,
+  saveEnvironment as applySavedEnvironment,
   saveCollectionDraft,
   saveFolderDraft,
   renameCollection as applyCollectionName
@@ -460,33 +462,40 @@ const sameEnvVarMeta = (a, b) =>
   && (a.dataType || null) === (b.dataType || null)
   && (a.description || null) === (b.description || null);
 
+/**
+ * Persist an environment's full variable set. Diffs against the loaded set:
+ * changed rows PATCH, new rows POST, removed rows DELETE. A secret's value is
+ * only sent when it actually changed, so editing one row can't wipe another's
+ * stored secret. The reconciled set (server ids + revisions, local plaintext
+ * kept for secrets) is written straight back — no refetch, so autosave doesn't
+ * churn the editor mid-edit.
+ */
 export const teamSaveEnvironment = (variables, environmentUid, collectionUid) => async (dispatch, getState) => {
-  const { environment, backendId } = teamEnv(getState, collectionUid, environmentUid);
+  const { environment } = teamEnv(getState, collectionUid, environmentUid);
   const baseById = new Map((environment.variables || []).map((v) => [v.uid, v]));
-  const keptIds = new Set();
+  const kept = new Set();
+  const reconciled = [];
 
   for (const v of variables) {
     const existing = v.uid && baseById.get(v.uid);
     if (existing) {
-      keptIds.add(existing.uid);
+      kept.add(existing.uid);
       const valueChanged = String(v.value ?? '') !== String(existing.value ?? '');
-      if (valueChanged || !sameEnvVarMeta(v, existing)) {
-        await transport.backend.updateEnvironmentVariable(
-          existing.uid,
-          envVarPatchBody(v, { valueChanged }),
-          existing.revision
-        );
-      }
+      const saved = valueChanged || !sameEnvVarMeta(v, existing)
+        ? await transport.backend.updateEnvironmentVariable(existing.uid, envVarPatchBody(v, { valueChanged }), existing.revision)
+        : null;
+      reconciled.push(saved ? backendVarToClientVar(saved, v.value) : existing);
     } else {
-      await transport.backend.createEnvironmentVariable(environmentUid, envVarCreateBody(v));
+      const saved = await transport.backend.createEnvironmentVariable(environmentUid, envVarCreateBody(v));
+      reconciled.push(backendVarToClientVar(saved, v.value));
     }
   }
 
   for (const v of environment.variables || []) {
-    if (!keptIds.has(v.uid)) await transport.backend.deleteEnvironmentVariable(v.uid);
+    if (!kept.has(v.uid)) await transport.backend.deleteEnvironmentVariable(v.uid);
   }
 
-  await dispatch(refetchTeamCollectionTree(backendId));
+  dispatch(applySavedEnvironment({ variables: reconciled, environmentUid, collectionUid }));
 };
 
 const seedEnvironmentVariables = async (environmentId, variables) => {

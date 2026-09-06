@@ -105,6 +105,23 @@ const dataTypeToBackend = (t) => (!t || t === 'string' ? 'text' : t);
 const emptyToNull = (v) => (v === undefined || v === null || v === '' ? null : String(v));
 
 /**
+ * One backend variable -> Bruno's env-var shape. A secret's value is masked
+ * ('' with `secret: true`) unless `keepValue` carries a plaintext the caller
+ * already holds in memory (a prior reveal, or the value the user just typed).
+ */
+export const backendVarToClientVar = (v, keepValue) => ({
+  uid: v.id,
+  name: v.name,
+  value: v.isSecret ? (keepValue ?? v.value ?? '') : (v.value ?? ''),
+  type: 'text',
+  dataType: dataTypeToClient(v.dataType),
+  enabled: v.enabled,
+  secret: v.isSecret,
+  description: v.description ?? null,
+  revision: v.revision
+});
+
+/**
  * One backend environment (from GET /environments/:id or the list-with-variables
  * projection) -> Bruno's env shape. The backend uuid is the client `uid`; a
  * secret's value is masked ('' with `secret: true`) until an explicit reveal.
@@ -115,17 +132,7 @@ export const backendEnvToClientEnv = (env) => ({
   pathname: null,
   color: env.color ?? null,
   revision: env.revision,
-  variables: (env.variables || []).map((v) => ({
-    uid: v.id,
-    name: v.name,
-    value: v.value ?? '',
-    type: 'text',
-    dataType: dataTypeToClient(v.dataType),
-    enabled: v.enabled,
-    secret: v.isSecret,
-    description: v.description ?? null,
-    revision: v.revision
-  }))
+  variables: (env.variables || []).map((v) => backendVarToClientVar(v))
 });
 
 // The parts of a Bruno `brunoConfig` (bruno.json) that a team collection keeps

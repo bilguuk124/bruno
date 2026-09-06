@@ -4,6 +4,7 @@ import {
   backendTreeToClientTree,
   requestPatchBody,
   backendEnvToClientEnv,
+  backendVarToClientVar,
   envVarCreateBody,
   envVarPatchBody,
   brunoConfigToSettings
@@ -196,6 +197,19 @@ describe('backendEnvToClientEnv', () => {
       description: null,
       revision: 4
     });
+  });
+});
+
+describe('backendVarToClientVar', () => {
+  it('keeps a caller-supplied plaintext for a secret, masks otherwise', () => {
+    const masked = { id: 'v', name: 's', dataType: 'text', enabled: true, isSecret: true, hasValue: true, revision: 2 };
+    expect(backendVarToClientVar(masked).value).toBe('');
+    expect(backendVarToClientVar(masked, 'kept-in-memory').value).toBe('kept-in-memory');
+  });
+
+  it('uses the server value for a non-secret and ignores keepValue', () => {
+    const v = { id: 'v', name: 'u', value: 'srv', dataType: 'number', enabled: true, isSecret: false, revision: 1 };
+    expect(backendVarToClientVar(v, 'stale')).toMatchObject({ value: 'srv', dataType: 'number', secret: false });
   });
 });
 
