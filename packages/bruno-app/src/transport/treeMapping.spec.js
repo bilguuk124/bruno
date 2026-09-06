@@ -1,4 +1,12 @@
-import { nodeToItem, itemToNode, backendTreeToClientTree, requestPatchBody } from './treeMapping';
+import {
+  nodeToItem,
+  itemToNode,
+  backendTreeToClientTree,
+  requestPatchBody,
+  backendEnvToClientEnv,
+  envVarCreateBody,
+  envVarPatchBody
+} from './treeMapping';
 
 describe('nodeToItem', () => {
   it('maps a request node, promoting method/url over the spec', () => {
@@ -124,6 +132,76 @@ describe('backendTreeToClientTree', () => {
     expect(tree.brunoConfig).toEqual({ name: 'API', version: '1' });
     expect(tree.items[0].uid).toBe('r1');
     expect(tree.environments).toEqual([]);
+  });
+
+  it('maps backend environments (with variables) onto the tree', () => {
+    const tree = backendTreeToClientTree(
+      { collection: { id: 'c1', name: 'API' }, items: [] },
+      {
+        environments: [
+          {
+            id: 'e1',
+            name: 'Staging',
+            color: '#0af',
+            revision: 3,
+            variables: [
+              { id: 'v1', name: 'baseUrl', value: 'https://x', dataType: 'text', enabled: true, isSecret: false, revision: 1 },
+              { id: 'v2', name: 'apiKey', value: null, dataType: 'text', enabled: true, isSecret: true, hasValue: true, revision: 1 }
+            ]
+          }
+        ]
+      }
+    );
+    expect(tree.environments[0]).toMatchObject({ uid: 'e1', name: 'Staging', pathname: null, revision: 3 });
+    expect(tree.environments[0].variables[0]).toMatchObject({ uid: 'v1', name: 'baseUrl', value: 'https://x', secret: false, dataType: 'string' });
+    expect(tree.environments[0].variables[1]).toMatchObject({ uid: 'v2', name: 'apiKey', value: '', secret: true });
+  });
+});
+
+describe('backendEnvToClientEnv', () => {
+  it('masks a secret value and translates dataType', () => {
+    const env = backendEnvToClientEnv({
+      id: 'e1',
+      name: 'Prod',
+      revision: 2,
+      variables: [{ id: 'v1', name: 's', value: null, dataType: 'number', enabled: false, isSecret: true, hasValue: true, revision: 4 }]
+    });
+    expect(env).toMatchObject({ uid: 'e1', name: 'Prod', pathname: null, color: null });
+    expect(env.variables[0]).toEqual({
+      uid: 'v1',
+      name: 's',
+      value: '',
+      type: 'text',
+      dataType: 'number',
+      enabled: false,
+      secret: true,
+      description: null,
+      revision: 4
+    });
+  });
+});
+
+describe('env variable bodies', () => {
+  it('envVarCreateBody nulls an empty value and maps secret/dataType', () => {
+    expect(envVarCreateBody({ name: 'k', value: '', secret: true, dataType: 'string', enabled: true })).toEqual({
+      name: 'k',
+      enabled: true,
+      dataType: 'text',
+      description: null,
+      isSecret: true,
+      value: null
+    });
+  });
+
+  it('envVarPatchBody omits value for an untouched secret', () => {
+    const body = envVarPatchBody({ name: 'k', value: '', secret: true }, { valueChanged: false });
+    expect(body).not.toHaveProperty('value');
+    expect(body).toMatchObject({ name: 'k', isSecret: true });
+  });
+
+  it('envVarPatchBody sends value for a non-secret and for a changed secret', () => {
+    expect(envVarPatchBody({ name: 'k', value: 'v', secret: false }, { valueChanged: false }).value).toBe('v');
+    expect(envVarPatchBody({ name: 'k', value: 'new', secret: true }, { valueChanged: true }).value).toBe('new');
   });
 });
 

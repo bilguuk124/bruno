@@ -58,6 +58,13 @@ const scheduleRefetch = (dispatch, backendCollectionId) => {
 };
 
 const ITEM_ENTITIES = new Set(['request', 'folder', 'file']);
+const ENVIRONMENT_ENTITIES = new Set(['environment', 'environment_variable']);
+
+/** Every loaded team collection belonging to the active team workspace. */
+const teamCollectionsInWorkspace = (state, workspaceBackendId) =>
+  state.collections.collections.filter(
+    (c) => c.origin === 'team' && c.workspaceBackendId === workspaceBackendId
+  );
 
 /**
  * Apply one backend change event to the loaded tree.
@@ -84,6 +91,19 @@ const applyChangeEvent = (api, ev) => {
         item: { name: ev.patch?.name, root: ev.patch?.rootSpec, revision: ev.patch?.revision }
       })
     );
+    return;
+  }
+
+  if (ENVIRONMENT_ENTITIES.has(ev.entityType)) {
+    // An `environment` patch carries its scope; a variable patch doesn't, so
+    // refetch every loaded team collection in the workspace for that case.
+    if (ev.entityType === 'environment' && ev.patch?.scopeType === 'collection' && ev.patch?.scopeId) {
+      scheduleRefetch(api.dispatch, ev.patch.scopeId);
+      return;
+    }
+    for (const c of teamCollectionsInWorkspace(api.getState(), socketWorkspaceId)) {
+      scheduleRefetch(api.dispatch, c.backendId);
+    }
     return;
   }
 

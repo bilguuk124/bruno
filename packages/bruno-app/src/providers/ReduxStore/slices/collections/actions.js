@@ -80,7 +80,23 @@ import {
 } from './index';
 
 import { each } from 'lodash';
-import { teamSaveRequest, teamCreateRequest, teamCreateFolder, teamDeleteItem, teamRenameItem, teamHandleItemsDrop } from './team';
+import {
+  teamSaveRequest,
+  teamCreateRequest,
+  teamCreateFolder,
+  teamDeleteItem,
+  teamRenameItem,
+  teamHandleItemsDrop,
+  teamAddEnvironment,
+  teamRenameEnvironment,
+  teamDeleteEnvironment,
+  teamUpdateEnvironmentColor,
+  teamSaveEnvironment,
+  teamCopyEnvironment,
+  teamImportEnvironment,
+  teamSelectEnvironment
+} from './team';
+export { revealTeamEnvironmentSecrets } from './team';
 export {
   resolveConflictOverwrite,
   resolveConflictTakeTheirs,
@@ -1998,6 +2014,10 @@ export const generateGrpcurlCommand = (item, collectionUid) => async (dispatch, 
 };
 
 export const addEnvironment = (name, collectionUid) => (dispatch, getState) => {
+  const teamCollection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (teamCollection?.origin === 'team') {
+    return dispatch(teamAddEnvironment(name, collectionUid));
+  }
   return new Promise((resolve, reject) => {
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -2025,6 +2045,10 @@ export const addEnvironment = (name, collectionUid) => (dispatch, getState) => {
 };
 
 export const importEnvironment = ({ name, variables, color, collectionUid }) => (dispatch, getState) => {
+  const teamCollection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (teamCollection?.origin === 'team') {
+    return dispatch(teamImportEnvironment({ name: sanitizeName(name), variables, color, collectionUid }));
+  }
   return new Promise((resolve, reject) => {
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -2054,6 +2078,10 @@ export const importEnvironment = ({ name, variables, color, collectionUid }) => 
 };
 
 export const copyEnvironment = (name, baseEnvUid, collectionUid) => (dispatch, getState) => {
+  const teamCollection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (teamCollection?.origin === 'team') {
+    return dispatch(teamCopyEnvironment(sanitizeName(name), baseEnvUid, collectionUid));
+  }
   return new Promise((resolve, reject) => {
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -2091,6 +2119,10 @@ export const copyEnvironment = (name, baseEnvUid, collectionUid) => (dispatch, g
 };
 
 export const renameEnvironment = (newName, environmentUid, collectionUid) => (dispatch, getState) => {
+  const teamCollection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (teamCollection?.origin === 'team') {
+    return dispatch(teamRenameEnvironment(sanitizeName(newName), environmentUid, collectionUid));
+  }
   return new Promise((resolve, reject) => {
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -2118,6 +2150,10 @@ export const renameEnvironment = (newName, environmentUid, collectionUid) => (di
 };
 
 export const deleteEnvironment = (environmentUid, collectionUid) => (dispatch, getState) => {
+  const teamCollection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (teamCollection?.origin === 'team') {
+    return dispatch(teamDeleteEnvironment(environmentUid, collectionUid));
+  }
   return new Promise((resolve, reject) => {
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -2165,6 +2201,10 @@ export const saveEnvironment = (variables, environmentUid, collectionUid) => (di
       return reject(new Error(DUPLICATE_SECRET_NAMES_ERROR));
     }
 
+    if (collection.origin === 'team') {
+      return dispatch(teamSaveEnvironment(variables, environmentUid, collectionUid)).then(resolve).catch(reject);
+    }
+
     environment.variables = variables;
 
     const { ipcRenderer } = window;
@@ -2182,6 +2222,10 @@ export const saveEnvironment = (variables, environmentUid, collectionUid) => (di
 };
 
 export const updateEnvironmentColor = (environmentUid, color, collectionUid) => (dispatch, getState) => {
+  const teamCollection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (teamCollection?.origin === 'team') {
+    return dispatch(teamUpdateEnvironmentColor(environmentUid, color, collectionUid));
+  }
   return new Promise((resolve, reject) => {
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -2486,6 +2530,12 @@ export const persistActiveEnvironment = (collectionUid) => (dispatch, getState) 
   const environment = findEnvironmentInCollection(collection, collection.activeEnvironmentUid);
   if (!environment) return;
 
+  if (collection.origin === 'team') {
+    dispatch(saveEnvironment(environment.variables, environment.uid, collectionUid))
+      .catch((err) => console.error('Failed to persist environment during script execution:', err));
+    return;
+  }
+
   if (collection._scriptEnvBaseline) {
     // Baseline exists — a draft was flushed earlier in this request cycle.
     // Write to disk silently (without dispatching _saveEnvironment) to avoid
@@ -2556,6 +2606,11 @@ export const collectionVariablesUpdateEvent = ({ collectionVariables, collection
 };
 
 export const selectEnvironment = (environmentUid, collectionUid) => (dispatch, getState) => {
+  const teamCollection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (teamCollection?.origin === 'team') {
+    dispatch(clearScriptVariableBaselines(collectionUid));
+    return dispatch(teamSelectEnvironment(environmentUid, collectionUid));
+  }
   return new Promise((resolve, reject) => {
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);

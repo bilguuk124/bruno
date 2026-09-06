@@ -1,8 +1,22 @@
 import toast from 'react-hot-toast';
 import { uuid } from 'utils/common';
-import { isItemAFolder, isItemARequest, findCollectionByUid, findItemInCollection, findParentItemInCollection } from 'utils/collections';
+import {
+  isItemAFolder,
+  isItemARequest,
+  findCollectionByUid,
+  findItemInCollection,
+  findParentItemInCollection,
+  findEnvironmentInCollection
+} from 'utils/collections';
 import transport from 'transport';
-import { requestPatchBody, requestCreateBody, folderCreateBody, changePatchToItem } from 'transport/treeMapping';
+import {
+  requestPatchBody,
+  requestCreateBody,
+  folderCreateBody,
+  changePatchToItem,
+  envVarCreateBody,
+  envVarPatchBody
+} from 'transport/treeMapping';
 import { addTab, closeTabs } from 'providers/ReduxStore/slices/tabs';
 import {
   newItem,
@@ -13,7 +27,9 @@ import {
   applyBackendItemChange,
   setItemSyncState,
   setItemConflict,
-  clearItemConflict
+  clearItemConflict,
+  selectEnvironment as applyEnvironmentSelection,
+  updateEnvironmentSecrets
 } from 'providers/ReduxStore/slices/collections';
 import { refetchTeamCollectionTree } from 'providers/ReduxStore/slices/backend';
 
@@ -382,4 +398,129 @@ export const teamHandleItemsDrop = ({ targetItem, draggedItems, dropType, collec
   } finally {
     dispatch(refetchTeamCollectionTree(backendId));
   }
+};
+
+/**
+ * Environments for team collections.
+ *
+ * Backend endpoints are collection-scoped (`/collections/:id/environments`) with
+ * per-variable CRUD and an audited `/environments/:id/reveal`. Every mutation
+ * here writes over REST then refetches the collection's environment set — envs
+ * are edited rarely, so a coarse refetch is simpler than optimistic surgery and
+ * keeps the client honest about server state.
+ *
+ * A secret variable's value is masked until the environment is selected, at
+ * which point `teamSelectEnvironment` reveals it into memory (never the
+ * snapshot — a team collection's pathname is null, so it is never serialized).
+ */
+
+const teamEnv = (getState, collectionUid, environmentUid) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (!collection) throw new Error('Collection not found');
+  const environment = environmentUid ? findEnvironmentInCollection(collection, environmentUid) : null;
+  if (environmentUid && !environment) throw new Error('Environment not found');
+  return { collection, environment, backendId: collection.backendId };
+};
+
+export const teamAddEnvironment = (name, collectionUid) => async (dispatch, getState) => {
+  const { backendId } = teamEnv(getState, collectionUid);
+  const created = await transport.backend.createCollectionEnvironment(backendId, { name });
+  await dispatch(refetchTeamCollectionTree(backendId));
+  dispatch(applyEnvironmentSelection({ environmentUid: created.id, collectionUid }));
+};
+
+export const teamRenameEnvironment = (newName, environmentUid, collectionUid) => async (dispatch, getState) => {
+  const { environment, backendId } = teamEnv(getState, collectionUid, environmentUid);
+  await transport.backend.updateEnvironment(environmentUid, { name: newName }, environment.revision);
+  await dispatch(refetchTeamCollectionTree(backendId));
+};
+
+export const teamDeleteEnvironment = (environmentUid, collectionUid) => async (dispatch, getState) => {
+  const { backendId } = teamEnv(getState, collectionUid, environmentUid);
+  await transport.backend.deleteEnvironment(environmentUid);
+  await dispatch(refetchTeamCollectionTree(backendId));
+};
+
+export const teamUpdateEnvironmentColor = (environmentUid, color, collectionUid) => async (dispatch, getState) => {
+  const { environment, backendId } = teamEnv(getState, collectionUid, environmentUid);
+  await transport.backend.updateEnvironment(environmentUid, { color }, environment.revision);
+  await dispatch(refetchTeamCollectionTree(backendId));
+};
+
+const sameEnvVarMeta = (a, b) =>
+  a.name === b.name
+  && (a.enabled !== false) === (b.enabled !== false)
+  && Boolean(a.secret) === Boolean(b.secret)
+  && (a.dataType || null) === (b.dataType || null)
+  && (a.description || null) === (b.description || null);
+
+export const teamSaveEnvironment = (variables, environmentUid, collectionUid) => async (dispatch, getState) => {
+  const { environment, backendId } = teamEnv(getState, collectionUid, environmentUid);
+  const baseById = new Map((environment.variables || []).map((v) => [v.uid, v]));
+  const keptIds = new Set();
+
+  for (const v of variables) {
+    const existing = v.uid && baseById.get(v.uid);
+    if (existing) {
+      keptIds.add(existing.uid);
+      const valueChanged = String(v.value ?? '') !== String(existing.value ?? '');
+      if (valueChanged || !sameEnvVarMeta(v, existing)) {
+        await transport.backend.updateEnvironmentVariable(
+          existing.uid,
+          envVarPatchBody(v, { valueChanged }),
+          existing.revision
+        );
+      }
+    } else {
+      await transport.backend.createEnvironmentVariable(environmentUid, envVarCreateBody(v));
+    }
+  }
+
+  for (const v of environment.variables || []) {
+    if (!keptIds.has(v.uid)) await transport.backend.deleteEnvironmentVariable(v.uid);
+  }
+
+  await dispatch(refetchTeamCollectionTree(backendId));
+};
+
+const seedEnvironmentVariables = async (environmentId, variables) => {
+  for (const v of variables || []) {
+    if (!v?.name || !v.name.trim()) continue;
+    await transport.backend.createEnvironmentVariable(environmentId, envVarCreateBody(v));
+  }
+};
+
+export const teamCopyEnvironment = (name, baseEnvUid, collectionUid) => async (dispatch, getState) => {
+  const { collection, backendId } = teamEnv(getState, collectionUid);
+  const baseEnv = findEnvironmentInCollection(collection, baseEnvUid);
+  if (!baseEnv) throw new Error('Environment not found');
+  const created = await transport.backend.createCollectionEnvironment(backendId, { name });
+  await seedEnvironmentVariables(created.id, baseEnv.variables);
+  await dispatch(refetchTeamCollectionTree(backendId));
+  dispatch(applyEnvironmentSelection({ environmentUid: created.id, collectionUid }));
+};
+
+export const teamImportEnvironment = ({ name, variables, color, collectionUid }) => async (dispatch, getState) => {
+  const { backendId } = teamEnv(getState, collectionUid);
+  const created = await transport.backend.createCollectionEnvironment(backendId, { name, color: color || null });
+  await seedEnvironmentVariables(created.id, variables);
+  await dispatch(refetchTeamCollectionTree(backendId));
+};
+
+/** Pull an environment's decrypted secrets into memory (audited on the backend). */
+export const revealTeamEnvironmentSecrets = (environmentUid, collectionUid) => async (dispatch, getState) => {
+  const { environment } = teamEnv(getState, collectionUid, environmentUid);
+  if (!environment || !(environment.variables || []).some((v) => v.secret)) return;
+  try {
+    const res = await transport.backend.revealEnvironment(environmentUid);
+    dispatch(updateEnvironmentSecrets({ collectionUid, environmentUid, variables: res.variables || [] }));
+  } catch (err) {
+    toast.error(err.message || 'Could not load environment secrets');
+  }
+};
+
+export const teamSelectEnvironment = (environmentUid, collectionUid) => async (dispatch, getState) => {
+  teamEnv(getState, collectionUid, environmentUid);
+  dispatch(applyEnvironmentSelection({ environmentUid, collectionUid }));
+  if (environmentUid) await dispatch(revealTeamEnvironmentSecrets(environmentUid, collectionUid));
 };

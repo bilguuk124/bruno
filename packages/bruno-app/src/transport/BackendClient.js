@@ -192,6 +192,44 @@ export default class BackendClient {
     return this.del(`/folders/${folderId}`);
   }
 
+  // --- environments ---
+
+  listCollectionEnvironments(collectionId) {
+    return this.get(`/collections/${collectionId}/environments`);
+  }
+
+  createCollectionEnvironment(collectionId, body) {
+    return this.post(`/collections/${collectionId}/environments`, body);
+  }
+
+  getEnvironment(environmentId) {
+    return this.get(`/environments/${environmentId}`);
+  }
+
+  updateEnvironment(environmentId, patch, revision) {
+    return this.patch(`/environments/${environmentId}`, patch, { ifMatch: revision });
+  }
+
+  deleteEnvironment(environmentId) {
+    return this.del(`/environments/${environmentId}`);
+  }
+
+  revealEnvironment(environmentId) {
+    return this.post(`/environments/${environmentId}/reveal`);
+  }
+
+  createEnvironmentVariable(environmentId, body) {
+    return this.post(`/environments/${environmentId}/variables`, body);
+  }
+
+  updateEnvironmentVariable(variableId, patch, revision) {
+    return this.patch(`/variables/${variableId}`, patch, { ifMatch: revision });
+  }
+
+  deleteEnvironmentVariable(variableId) {
+    return this.del(`/variables/${variableId}`);
+  }
+
   // --- user preferences ---
 
   getPreferences() {

@@ -243,28 +243,22 @@ export const switchToTeamWorkspace = (workspaceUid) => async (dispatch, getState
   }
   dispatch(updateWorkspace({ uid: workspaceUid, collections: wsCollections }));
 
-  await Promise.all(
-    cols.map(async (c) => {
-      try {
-        const bt = await transport.backend.getCollectionTree(c.id);
-        dispatch(collectionLoadedFromTree({ collectionUid: TEAM_PREFIX + c.id, tree: backendTreeToClientTree(bt) }));
-      } catch {
-        /* leave the collection with an empty tree; a later sync will fill it */
-      }
-    })
-  );
+  await Promise.all(cols.map((c) => dispatch(refetchTeamCollectionTree(c.id))));
 
   dispatch(backendSyncStatusChanged({ workspaceId: backendId, status: 'ready' }));
 };
 
-/** Re-pull one team collection's tree (used by the sync middleware on a change event). */
+/** Re-pull one team collection's tree + environments (used on load and by the sync middleware). */
 export const refetchTeamCollectionTree = (backendCollectionId) => async (dispatch) => {
   try {
-    const bt = await transport.backend.getCollectionTree(backendCollectionId);
+    const [bt, envRes] = await Promise.all([
+      transport.backend.getCollectionTree(backendCollectionId),
+      transport.backend.listCollectionEnvironments(backendCollectionId).catch(() => ({ environments: [] }))
+    ]);
     dispatch(
       collectionLoadedFromTree({
         collectionUid: TEAM_PREFIX + backendCollectionId,
-        tree: backendTreeToClientTree(bt)
+        tree: backendTreeToClientTree(bt, { environments: envRes.environments || [] })
       })
     );
   } catch {

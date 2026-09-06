@@ -98,15 +98,74 @@ export const changePatchToItem = (patch) => ({
   collectionId: patch.collectionId ?? null
 });
 
+// Backend variable dataType 'text' is Bruno's 'string'; the rest line up.
+const dataTypeToClient = (t) => (t === 'text' ? 'string' : t || null);
+const dataTypeToBackend = (t) => (!t || t === 'string' ? 'text' : t);
+
+const emptyToNull = (v) => (v === undefined || v === null || v === '' ? null : String(v));
+
+/**
+ * One backend environment (from GET /environments/:id or the list-with-variables
+ * projection) -> Bruno's env shape. The backend uuid is the client `uid`; a
+ * secret's value is masked ('' with `secret: true`) until an explicit reveal.
+ */
+export const backendEnvToClientEnv = (env) => ({
+  uid: env.id,
+  name: env.name,
+  pathname: null,
+  color: env.color ?? null,
+  revision: env.revision,
+  variables: (env.variables || []).map((v) => ({
+    uid: v.id,
+    name: v.name,
+    value: v.value ?? '',
+    type: 'text',
+    dataType: dataTypeToClient(v.dataType),
+    enabled: v.enabled,
+    secret: v.isSecret,
+    description: v.description ?? null,
+    revision: v.revision
+  }))
+});
+
 /** The backend GET /collections/:id/tree response -> the `tree` payload that collectionLoadedFromTree expects. */
 export const backendTreeToClientTree = (backendTree, { environments = [] } = {}) => {
   const collection = backendTree.collection || {};
   return {
     items: (backendTree.items || []).map(nodeToItem),
-    environments,
+    environments: environments.map(backendEnvToClientEnv),
     root: isObject(collection.rootSpec) ? collection.rootSpec : {},
     brunoConfig: { name: collection.name, version: '1' }
   };
+};
+
+/** A Bruno env variable -> the backend POST /environments/:id/variables body. */
+export const envVarCreateBody = (v) => ({
+  name: v.name,
+  enabled: v.enabled !== false,
+  dataType: dataTypeToBackend(v.dataType),
+  description: v.description || null,
+  isSecret: Boolean(v.secret),
+  value: emptyToNull(v.value)
+});
+
+/**
+ * A Bruno env variable -> the backend PATCH /variables/:id body. A secret whose
+ * value is still the masked placeholder is left untouched (no `value` key), so
+ * editing a sibling variable never wipes a stored secret.
+ */
+export const envVarPatchBody = (v, { valueChanged }) => {
+  const body = {
+    name: v.name,
+    enabled: v.enabled !== false,
+    dataType: dataTypeToBackend(v.dataType),
+    description: v.description || null,
+    isSecret: Boolean(v.secret)
+  };
+  if (valueChanged || !v.secret) {
+    body.value = emptyToNull(v.value) ?? '';
+  }
+  return body;
 };
 
 /** One Bruno item -> a backend node (for /import and POST .../requests). */

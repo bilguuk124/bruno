@@ -415,6 +415,25 @@ export const collectionsSlice = createSlice({
         }
       }
     },
+    /**
+     * Merge revealed secret plaintext into a team environment's variables (from
+     * POST /environments/:id/reveal). Kept out of the snapshot the same way the
+     * whole team collection is — its pathname is null — so plaintext never
+     * touches disk.
+     */
+    updateEnvironmentSecrets: (state, action) => {
+      const { collectionUid, environmentUid, variables } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      const environment = collection && findEnvironmentInCollection(collection, environmentUid);
+      if (!environment) return;
+
+      const revealed = new Map(variables.map((v) => [v.id ?? v.uid, v.value]));
+      for (const variable of environment.variables) {
+        if (variable.secret && revealed.has(variable.uid)) {
+          variable.value = revealed.get(variable.uid) ?? '';
+        }
+      }
+    },
     selectEnvironment: (state, action) => {
       const { environmentUid, collectionUid } = action.payload;
       const collection = findCollectionByUid(state.collections, collectionUid);
@@ -3649,6 +3668,14 @@ export const collectionsSlice = createSlice({
 
       collection.items = mergeTreeItems(collection.items, tree?.items || []);
       collection.environments = tree?.environments || [];
+      // a team env can be deleted by a teammate; drop a now-dangling selection
+      if (
+        collection.origin === 'team'
+        && collection.activeEnvironmentUid
+        && !collection.environments.some((e) => e.uid === collection.activeEnvironmentUid)
+      ) {
+        collection.activeEnvironmentUid = null;
+      }
       if (tree?.root !== undefined) {
         collection.root = tree.root;
       }
@@ -4189,6 +4216,7 @@ export const {
   updatedFolderSettingsSelectedTab,
   collectionUnlinkEnvFileEvent,
   saveEnvironment,
+  updateEnvironmentSecrets,
   selectEnvironment,
   applyDefaultEnvironment,
   updateEnvironmentColor,
