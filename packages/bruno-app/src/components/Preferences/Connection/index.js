@@ -3,16 +3,19 @@ import { useSelector, useDispatch } from 'react-redux';
 import toast from 'react-hot-toast';
 import Button from 'ui/Button';
 import { connectAndAuthenticate, logoutBackend, disconnectBackend } from 'providers/ReduxStore/slices/backend';
+import { isBackendUrlLocked } from 'transport/config';
 import ActiveSessions from './ActiveSessions';
 import StyledWrapper from './StyledWrapper';
 
 /**
  * Preferences → Connection. Points the app at a self-hosted Newton backend.
- * With no backend configured the app stays in local (filesystem) mode.
+ * With no backend configured the app stays in local (filesystem) mode. When the
+ * deployment pins the URL, the field is hidden and only sign in / out is offered.
  */
 const Connection = () => {
   const dispatch = useDispatch();
   const { status, baseUrl, user, error } = useSelector((state) => state.backend);
+  const urlLocked = isBackendUrlLocked();
 
   const [form, setForm] = useState({ baseUrl: baseUrl || '', email: '', password: '', name: '' });
   const [register, setRegister] = useState(false);
@@ -23,8 +26,8 @@ const Connection = () => {
 
   const handleConnect = (e) => {
     e.preventDefault();
-    if (!form.baseUrl.trim() || !form.email.trim() || !form.password) {
-      toast.error('Backend URL, email and password are all required');
+    if ((!urlLocked && !form.baseUrl.trim()) || !form.email.trim() || !form.password) {
+      toast.error(urlLocked ? 'Email and password are required' : 'Backend URL, email and password are all required');
       return;
     }
     setSubmitting(true);
@@ -57,8 +60,9 @@ const Connection = () => {
     <StyledWrapper className="w-full">
       <div className="section-header">Connection</div>
       <p className="description">
-        Connect to a self-hosted Newton backend to sync collections, environments, history and
-        secrets across your team. Leave this unset to keep working against local files.
+        {urlLocked
+          ? 'This app is connected to a managed Newton backend. Sign in to sync collections, environments, history and secrets across your team.'
+          : 'Connect to a self-hosted Newton backend to sync collections, environments, history and secrets across your team. Leave this unset to keep working against local files.'}
       </p>
 
       <div className="status-row">
@@ -73,25 +77,33 @@ const Connection = () => {
             <Button color="secondary" size="sm" onClick={handleLogout}>
               Log out
             </Button>
-            <Button color="secondary" variant="outline" size="sm" onClick={handleDisconnect}>
-              Disconnect
-            </Button>
+            {!urlLocked ? (
+              <Button color="secondary" variant="outline" size="sm" onClick={handleDisconnect}>
+                Disconnect
+              </Button>
+            ) : null}
           </div>
           <ActiveSessions />
         </>
       ) : (
         <form className="connection-form" onSubmit={handleConnect}>
-          <div>
-            <label htmlFor="backend-url">Backend URL</label>
-            <input
-              id="backend-url"
-              className="block textbox w-full"
-              placeholder="https://newton.example.com"
-              value={form.baseUrl}
-              onChange={set('baseUrl')}
-              autoComplete="off"
-            />
-          </div>
+          {!urlLocked ? (
+            <div>
+              <label htmlFor="backend-url">Backend URL</label>
+              <input
+                id="backend-url"
+                className="block textbox w-full"
+                placeholder="https://newton.example.com"
+                value={form.baseUrl}
+                onChange={set('baseUrl')}
+                autoComplete="off"
+              />
+            </div>
+          ) : (
+            <div className="status-row">
+              <span>Server: {baseUrl}</span>
+            </div>
+          )}
           <div>
             <label htmlFor="backend-email">Email</label>
             <input
@@ -128,17 +140,19 @@ const Connection = () => {
           </div>
           <div className="actions">
             <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? 'Connecting…' : register ? 'Create account & connect' : 'Connect'}
+              {submitting ? 'Connecting…' : register ? 'Create account & connect' : urlLocked ? 'Sign in' : 'Connect'}
             </Button>
-            {baseUrl ? (
+            {baseUrl && !urlLocked ? (
               <Button type="button" color="secondary" variant="outline" size="sm" onClick={handleDisconnect}>
                 Forget backend
               </Button>
             ) : null}
           </div>
-          <button type="button" className="link-button" onClick={() => setRegister((v) => !v)}>
-            {register ? 'Have an account? Sign in' : 'First time? Create an account'}
-          </button>
+          {!urlLocked ? (
+            <button type="button" className="link-button" onClick={() => setRegister((v) => !v)}>
+              {register ? 'Have an account? Sign in' : 'First time? Create an account'}
+            </button>
+          ) : null}
         </form>
       )}
     </StyledWrapper>

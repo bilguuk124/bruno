@@ -38,8 +38,15 @@ export const backendIdFromUid = (uid) => (isTeamUid(uid) ? uid.slice(TEAM_PREFIX
  * `status` drives the UI: 'local' when no backend is configured, otherwise the
  * lifecycle of the remote session.
  */
+const initialStatus = () => {
+  if (!config.isBackendConfigured()) return 'local';
+  // A stored token gets validated by initBackendConnection on boot; show the
+  // in-between state rather than flashing the sign-in screen first.
+  return config.isAuthenticated() ? 'connecting' : 'unauthenticated';
+};
+
 const initialState = {
-  status: config.isBackendConfigured() ? 'unauthenticated' : 'local', // local | connecting | unauthenticated | connected | error
+  status: initialStatus(), // local | connecting | unauthenticated | connected | error
   baseUrl: config.getBaseUrl(),
   user: null,
   error: null,
@@ -208,6 +215,15 @@ export const loadTeamWorkspaces = () => async (dispatch, getState) => {
   // drop team workspaces that no longer exist on the backend
   for (const w of getState().workspaces.workspaces) {
     if (isTeamUid(w.uid) && !known.has(w.uid)) dispatch(removeWorkspace(w.uid));
+  }
+
+  // A backend-only deployment has no local mode to sit in: land the user in
+  // a team workspace straight after sign-in.
+  if (config.isBackendOnly() && list.length > 0) {
+    const active = getState().workspaces.activeWorkspaceUid;
+    if (!isTeamUid(active)) {
+      dispatch(switchToTeamWorkspace(TEAM_PREFIX + list[0].id));
+    }
   }
 };
 

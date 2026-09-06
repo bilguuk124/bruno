@@ -9,11 +9,15 @@ import {
   clearSession,
   disconnect,
   apiUrl,
-  onChange
+  onChange,
+  getPinnedBackendUrl,
+  isBackendUrlLocked,
+  isBackendOnly
 } from './config';
 
 beforeEach(() => {
   window.localStorage.clear();
+  delete window.__NEWTON_CONFIG__;
 });
 
 describe('normalizeBaseUrl', () => {
@@ -55,6 +59,36 @@ describe('connection state', () => {
     disconnect();
     expect(getBaseUrl()).toBe('');
     expect(getToken()).toBe('');
+  });
+});
+
+describe('deploy-pinned backend URL', () => {
+  it('pins the URL, locks it, and marks the app backend-only', () => {
+    window.__NEWTON_CONFIG__ = { backendUrl: 'https://api.newton.example.com/' };
+    expect(getPinnedBackendUrl()).toBe('https://api.newton.example.com');
+    expect(isBackendUrlLocked()).toBe(true);
+    expect(isBackendOnly()).toBe(true);
+    expect(getBaseUrl()).toBe('https://api.newton.example.com');
+    expect(isBackendConfigured()).toBe(true);
+  });
+
+  it('a locked URL ignores setBaseUrl and survives disconnect', () => {
+    window.__NEWTON_CONFIG__ = { backendUrl: 'https://api.newton.example.com' };
+    setBaseUrl('https://evil.example.com');
+    expect(getBaseUrl()).toBe('https://api.newton.example.com');
+    setToken('t');
+    disconnect();
+    expect(getToken()).toBe('');
+    expect(getBaseUrl()).toBe('https://api.newton.example.com'); // still pinned
+  });
+
+  it('pre-prod can pin a default but leave it changeable', () => {
+    window.__NEWTON_CONFIG__ = { backendUrl: 'https://staging.newton.example.com', lockBackendUrl: false };
+    expect(isBackendUrlLocked()).toBe(false);
+    expect(isBackendOnly()).toBe(false);
+    expect(getBaseUrl()).toBe('https://staging.newton.example.com');
+    setBaseUrl('https://other.example.com');
+    expect(getBaseUrl()).toBe('https://other.example.com'); // localStorage overrides
   });
 });
 

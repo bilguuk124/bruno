@@ -51,7 +51,13 @@ export default defineConfig({
     }
   },
   html: {
-    title: 'Newton'
+    title: 'Newton',
+    // Runtime config (deploy-pinned backend URL). Loaded synchronously before
+    // the bundle so window.__NEWTON_CONFIG__ is set when the app boots.
+    // public/config.js is the empty default; a hosting server overwrites it.
+    tags: [
+      { tag: 'script', attrs: { src: '/config.js' }, head: true, append: false }
+    ]
   },
   tools: {
     rspack: {

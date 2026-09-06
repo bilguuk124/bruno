@@ -87,6 +87,9 @@ async function main() {
       if (file.endsWith('.html')) {
         let content = await fs.readFile(`packages/bruno-electron/web/${file}`, 'utf8');
         content = content.replace(/\/static/g, './static');
+        // Runtime config script (public/config.js). Absolute "/config.js" would
+        // resolve to the filesystem root under the file:// protocol.
+        content = content.replace(/(src=")\/config\.js"/g, '$1./config.js"');
         await fs.writeFile(`packages/bruno-electron/web/${file}`, content);
       }
     }

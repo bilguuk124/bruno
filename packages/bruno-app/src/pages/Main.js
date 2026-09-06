@@ -6,6 +6,7 @@ import { PromptVariablesProvider } from 'providers/PromptVariables';
 import { SQLiteProvider } from '@usebruno/sqlite/web';
 import ReduxStore from 'providers/ReduxStore';
 import ThemeProvider from 'providers/Theme/index';
+import BackendAuthGate from 'components/BackendAuthGate';
 import ErrorBoundary from './ErrorBoundary';
 
 import '../styles/globals.css';
@@ -48,7 +49,7 @@ function Main({ children }) {
               <PromptVariablesProvider>
                 <AppProvider>
                   <HotkeysProvider>
-                    {children}
+                    <BackendAuthGate>{children}</BackendAuthGate>
                   </HotkeysProvider>
                 </AppProvider>
               </PromptVariablesProvider>
