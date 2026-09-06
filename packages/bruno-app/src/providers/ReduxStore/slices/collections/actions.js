@@ -97,7 +97,8 @@ import {
   teamSelectEnvironment,
   teamSaveCollectionRoot,
   teamSaveFolderRoot,
-  teamRenameCollection
+  teamRenameCollection,
+  teamRecordHistory
 } from './team';
 export { revealTeamEnvironmentSecrets } from './team';
 export {
@@ -715,7 +716,7 @@ export const sendRequest = (item, collectionUid) => (dispatch, getState) => {
             }))
           };
 
-          return dispatch(
+          dispatch(
             responseReceived({
               itemUid,
               collectionUid,
@@ -723,6 +724,7 @@ export const sendRequest = (item, collectionUid) => (dispatch, getState) => {
               requestSent
             })
           );
+          dispatch(teamRecordHistory({ itemUid, collectionUid, response: serializedResponse, requestSent }));
         })
         .then(resolve)
         .catch((err) => {
@@ -757,6 +759,7 @@ export const sendRequest = (item, collectionUid) => (dispatch, getState) => {
               requestSent
             })
           );
+          dispatch(teamRecordHistory({ itemUid, collectionUid, response: errorResponse, requestSent }));
         });
     }
   });

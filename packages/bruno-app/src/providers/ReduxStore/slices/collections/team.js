@@ -21,6 +21,7 @@ import {
   backendVarToClientVar,
   brunoConfigToSettings
 } from 'transport/treeMapping';
+import { buildHistoryEntry, collectSecretValues } from 'transport/history';
 import { addTab, closeTabs } from 'providers/ReduxStore/slices/tabs';
 import {
   newItem,
@@ -601,6 +602,32 @@ export const teamSaveFolderRoot = (collectionUid, folderUid, silent = false) => 
     if (!silent) toast.error(err.message || 'Failed to save folder settings');
     throw err;
   }
+};
+
+/**
+ * Record one request execution to the team's shared history. Fire-and-forget:
+ * a failed record must never disrupt the request flow. The snapshot is redacted
+ * client-side (auth headers dropped, known secret values masked) before it
+ * leaves the renderer.
+ */
+export const teamRecordHistory = ({ itemUid, collectionUid, response, requestSent }) => (dispatch, getState) => {
+  const state = getState();
+  const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  if (!collection || collection.origin !== 'team' || !collection.workspaceBackendId) return;
+  const item = findItemInCollection(collection, itemUid);
+  if (!item) return;
+
+  const environment = collection.activeEnvironmentUid
+    ? findEnvironmentInCollection(collection, collection.activeEnvironmentUid)
+    : null;
+  const { globalEnvironments = [], activeGlobalEnvironmentUid } = state.globalEnvironments || {};
+  const globalEnv = globalEnvironments.find((e) => e.uid === activeGlobalEnvironmentUid);
+  const secrets = collectSecretValues(environment, globalEnv);
+
+  const entry = buildHistoryEntry({ item, collection, environment, response, requestSent, secrets });
+  transport.backend
+    .createHistoryEntry(collection.workspaceBackendId, entry)
+    .catch((err) => console.warn('history: could not record execution', err?.message));
 };
 
 export const teamRenameCollection = (newName, collectionUid) => async (dispatch, getState) => {

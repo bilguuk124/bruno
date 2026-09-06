@@ -10,6 +10,7 @@ import StatusCode from './StatusCode';
 import ResponseTime from './ResponseTime';
 import ResponseSize from './ResponseSize';
 import Timeline from './Timeline';
+import History from './History';
 import TestResults from './TestResults';
 import TestResultsLabel from './TestResultsLabel';
 import ScriptError from './ScriptError';
@@ -118,6 +119,8 @@ const ResponsePane = ({ item, collection }) => {
 
   const hasScriptError = item?.preRequestScriptErrorMessage || item?.postResponseScriptErrorMessage || item?.testScriptErrorMessage;
 
+  const isTeamCollection = collection?.origin === 'team';
+
   const allTabs = useMemo(() => {
     return [
       {
@@ -135,6 +138,7 @@ const ResponsePane = ({ item, collection }) => {
         label: 'Timeline',
         indicator: null
       },
+      ...(isTeamCollection ? [{ key: 'history', label: 'History', indicator: null }] : []),
       {
         key: 'tests',
         label: (
@@ -148,7 +152,7 @@ const ResponsePane = ({ item, collection }) => {
         indicator: null
       }
     ];
-  }, [responseHeadersCount, item.testResults, item.assertionResults, item.preRequestTestResults, item.postResponseTestResults]);
+  }, [isTeamCollection, responseHeadersCount, item.testResults, item.assertionResults, item.preRequestTestResults, item.postResponseTestResults]);
 
   const getTabPanel = (tab) => {
     switch (tab) {
@@ -180,6 +184,9 @@ const ResponsePane = ({ item, collection }) => {
       }
       case 'timeline': {
         return <Timeline collection={collection} item={item} activeTabUid={activeTabUid} />;
+      }
+      case 'history': {
+        return <History collection={collection} item={item} />;
       }
       case 'tests': {
         return (
