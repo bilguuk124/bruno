@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPin, IconPinned, IconPlus, IconDownload, IconSettings, IconMinus, IconSquare, IconX, IconCopy } from '@tabler/icons';
+import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPin, IconPinned, IconPlus, IconDownload, IconSettings, IconMinus, IconSquare, IconX, IconCopy, IconUsers } from '@tabler/icons';
 import { forwardRef, useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useDispatch, useSelector } from 'react-redux';
@@ -18,6 +18,8 @@ import ActionIcon from 'ui/ActionIcon';
 import IconSidebarToggle from 'components/Icons/IconSidebarToggle';
 import CreateWorkspace from 'components/WorkspaceSidebar/CreateWorkspace';
 import ImportWorkspace from 'components/WorkspaceSidebar/ImportWorkspace';
+import TeamSettings from 'components/TeamSettings';
+import CreateTeamWorkspace from 'components/CreateTeamWorkspace';
 
 import IconBottombarToggle from 'components/Icons/IconBottombarToggle/index';
 import AppMenu from './AppMenu';
@@ -120,6 +122,7 @@ const AppTitleBar = () => {
   const preferences = useSelector((state) => state.app.preferences);
   const sidebarCollapsed = useSelector((state) => state.app.sidebarCollapsed);
   const isConsoleOpen = useSelector((state) => state.logs.isConsoleOpen);
+  const backendConnected = useSelector((state) => state.backend.status === 'connected');
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
 
   // Sort workspaces according to preferences
@@ -129,6 +132,8 @@ const AppTitleBar = () => {
 
   const [createWorkspaceModalOpen, setCreateWorkspaceModalOpen] = useState(false);
   const [importWorkspaceModalOpen, setImportWorkspaceModalOpen] = useState(false);
+  const [teamSettingsOpen, setTeamSettingsOpen] = useState(false);
+  const [createTeamWorkspaceOpen, setCreateTeamWorkspaceOpen] = useState(false);
 
   const WorkspaceName = forwardRef((props, ref) => {
     return (
@@ -235,6 +240,18 @@ const AppTitleBar = () => {
       };
     });
 
+    if (activeWorkspace?.type === 'team') {
+      items.push(
+        { type: 'label', label: 'Team' },
+        {
+          id: 'team-settings',
+          leftSection: IconUsers,
+          label: 'Members & invites',
+          onClick: () => setTeamSettingsOpen(true)
+        }
+      );
+    }
+
     // Add label and action items
     items.push(
       { type: 'label', label: 'Workspaces' },
@@ -244,6 +261,16 @@ const AppTitleBar = () => {
         label: 'Create workspace',
         onClick: handleCreateWorkspace
       },
+      ...(backendConnected
+        ? [
+            {
+              id: 'create-team-workspace',
+              leftSection: IconUsers,
+              label: 'Create team workspace',
+              onClick: () => setCreateTeamWorkspaceOpen(true)
+            }
+          ]
+        : []),
       {
         id: 'open-workspace',
         leftSection: IconFolder,
@@ -265,7 +292,7 @@ const AppTitleBar = () => {
     );
 
     return items;
-  }, [sortedWorkspaces, activeWorkspaceUid, preferences, handlePinWorkspace, handleCreateWorkspace]);
+  }, [sortedWorkspaces, activeWorkspaceUid, activeWorkspace?.type, backendConnected, preferences, handlePinWorkspace, handleCreateWorkspace]);
 
   return (
     <StyledWrapper className={`app-titlebar ${osClass} ${isFullScreen ? 'fullscreen' : ''}`}>
@@ -274,6 +301,12 @@ const AppTitleBar = () => {
       )}
       {importWorkspaceModalOpen && (
         <ImportWorkspace onClose={() => setImportWorkspaceModalOpen(false)} />
+      )}
+      {teamSettingsOpen && activeWorkspace?.type === 'team' && (
+        <TeamSettings workspace={activeWorkspace} onClose={() => setTeamSettingsOpen(false)} />
+      )}
+      {createTeamWorkspaceOpen && (
+        <CreateTeamWorkspace onClose={() => setCreateTeamWorkspaceOpen(false)} />
       )}
 
       <div className="titlebar-content">

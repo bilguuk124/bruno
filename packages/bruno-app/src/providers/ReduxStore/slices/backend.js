@@ -297,6 +297,44 @@ export const refetchTeamCollectionTree = (backendCollectionId) => async (dispatc
   }
 };
 
+/**
+ * Create a backend workspace (the caller becomes its owner) and switch to it.
+ * Only meaningful in remote mode.
+ */
+export const createTeamWorkspace = (name) => async (dispatch) => {
+  const ws = await transport.backend.createWorkspace(name);
+  await dispatch(loadTeamWorkspaces());
+  await dispatch(switchToTeamWorkspace(TEAM_PREFIX + ws.id));
+  return ws;
+};
+
+/**
+ * Accept an invite as the already-signed-in user. The backend checks the
+ * invite email matches this account. Lands the user in the joined workspace.
+ */
+export const acceptInviteAsCurrentUser = (token) => async (dispatch) => {
+  const { workspaceId } = await transport.backend.acceptInvite(token);
+  await dispatch(loadTeamWorkspaces());
+  await dispatch(switchToTeamWorkspace(TEAM_PREFIX + workspaceId));
+  return workspaceId;
+};
+
+/**
+ * Accept an invite by registering the invitee's account. Works even when open
+ * signup is off — a valid invite is the authorization. Persists the new session
+ * and lands the user in the joined workspace.
+ */
+export const acceptInviteAsNewUser
+  = ({ token, name, password }) =>
+    async (dispatch) => {
+      const res = await transport.backend.acceptInviteAsNewUser(token, { name, password });
+      config.setToken(res.token);
+      dispatch(backendUserLoaded(res.user));
+      await dispatch(loadTeamWorkspaces());
+      await dispatch(switchToTeamWorkspace(TEAM_PREFIX + res.workspaceId));
+      return res.user;
+    };
+
 /** Remove all team workspaces + their collections from the store (logout / disconnect). */
 export const teardownTeamWorkspaces = () => (dispatch, getState) => {
   const state = getState();

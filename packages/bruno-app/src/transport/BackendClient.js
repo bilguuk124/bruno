@@ -138,6 +138,44 @@ export default class BackendClient {
     return this.get(`/workspaces/${id}/changes?since=${since || 0}`);
   }
 
+  // --- workspace members & invites ---
+
+  listMembers(workspaceId) {
+    return this.get(`/workspaces/${workspaceId}/members`);
+  }
+
+  upsertMember(workspaceId, { principalType = 'user', principalId, role }) {
+    return this.put(`/workspaces/${workspaceId}/members`, { principalType, principalId, role });
+  }
+
+  removeMember(workspaceId, principalId, principalType = 'user') {
+    return this.del(`/workspaces/${workspaceId}/members/${principalType}/${principalId}`);
+  }
+
+  listInvites(workspaceId) {
+    return this.get(`/workspaces/${workspaceId}/invites`);
+  }
+
+  createInvite(workspaceId, { email, role }) {
+    return this.post(`/workspaces/${workspaceId}/invites`, { email, role });
+  }
+
+  revokeInvite(inviteId) {
+    return this.del(`/invites/${inviteId}`);
+  }
+
+  previewInvite(token) {
+    return this.get(`/invites/${encodeURIComponent(token)}`);
+  }
+
+  acceptInvite(token) {
+    return this.post(`/invites/${encodeURIComponent(token)}/accept`);
+  }
+
+  acceptInviteAsNewUser(token, { name, password }) {
+    return this.post(`/invites/${encodeURIComponent(token)}/accept-new`, { name, password });
+  }
+
   // --- collections tree ---
 
   listCollections(workspaceId) {

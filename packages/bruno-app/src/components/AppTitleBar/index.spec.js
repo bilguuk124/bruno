@@ -28,7 +28,8 @@ const mockStore = configureStore({
   reducer: {
     workspaces: (state = { workspaces: [], activeWorkspaceUid: null }) => state,
     app: (state = { preferences: {}, sidebarCollapsed: false }) => state,
-    logs: (state = { isConsoleOpen: false }) => state
+    logs: (state = { isConsoleOpen: false }) => state,
+    backend: (state = { status: 'local' }) => state
   }
 });
 

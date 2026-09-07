@@ -59,6 +59,17 @@ const StyledWrapper = styled.div`
     color: ${(props) => props.theme.colors?.text?.danger || '#d94b4b'};
   }
 
+  .invite-summary {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    margin-bottom: 0.5rem;
+    color: ${(props) => props.theme.colors?.text?.muted || props.theme.text};
+  }
+
+  .invite-form > div {
+    margin-bottom: 0.75rem;
+  }
+
   .signin-actions {
     display: flex;
     gap: 0.5rem;

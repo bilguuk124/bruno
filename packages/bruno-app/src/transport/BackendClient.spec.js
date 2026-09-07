@@ -85,6 +85,41 @@ it('clears the session on 401', async () => {
   expect(getToken()).toBe('');
 });
 
+it('exposes workspace member + invite endpoints', async () => {
+  global.fetch.mockReturnValue(jsonResponse(200, { members: [] }));
+  await client.listMembers('ws1');
+  expect(global.fetch.mock.calls[0][0]).toBe('https://n.example.com/api/v1/workspaces/ws1/members');
+
+  global.fetch.mockReturnValue(jsonResponse(204));
+  await client.upsertMember('ws1', { principalId: 'u2', role: 'editor' });
+  let [url, init] = global.fetch.mock.calls[1];
+  expect(url).toBe('https://n.example.com/api/v1/workspaces/ws1/members');
+  expect(init.method).toBe('PUT');
+  expect(JSON.parse(init.body)).toEqual({ principalType: 'user', principalId: 'u2', role: 'editor' });
+
+  global.fetch.mockReturnValue(jsonResponse(204));
+  await client.removeMember('ws1', 'u2');
+  [url, init] = global.fetch.mock.calls[2];
+  expect(url).toBe('https://n.example.com/api/v1/workspaces/ws1/members/user/u2');
+  expect(init.method).toBe('DELETE');
+
+  global.fetch.mockReturnValue(jsonResponse(201, { invite: { id: 'i1' }, token: 'bruno_invite_x' }));
+  await client.createInvite('ws1', { email: 'a@b.com', role: 'viewer' });
+  [url, init] = global.fetch.mock.calls[3];
+  expect(url).toBe('https://n.example.com/api/v1/workspaces/ws1/invites');
+  expect(JSON.parse(init.body)).toEqual({ email: 'a@b.com', role: 'viewer' });
+
+  global.fetch.mockReturnValue(jsonResponse(200, { email: 'a@b.com', workspaceName: 'Team' }));
+  await client.previewInvite('bruno_invite_x');
+  expect(global.fetch.mock.calls[4][0]).toBe('https://n.example.com/api/v1/invites/bruno_invite_x');
+
+  global.fetch.mockReturnValue(jsonResponse(200, { user: { id: 'u3' }, token: 't', workspaceId: 'ws1' }));
+  await client.acceptInviteAsNewUser('bruno_invite_x', { name: 'A', password: 'secret1234' });
+  [url, init] = global.fetch.mock.calls[5];
+  expect(url).toBe('https://n.example.com/api/v1/invites/bruno_invite_x/accept-new');
+  expect(JSON.parse(init.body)).toEqual({ name: 'A', password: 'secret1234' });
+});
+
 it('wraps a network failure as a status-0 BackendError', async () => {
   global.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
   const err = await client.me().catch((e) => e);
