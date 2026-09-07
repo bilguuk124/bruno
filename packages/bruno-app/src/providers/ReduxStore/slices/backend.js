@@ -1,7 +1,7 @@
 import { createSlice } from '@reduxjs/toolkit';
 import transport from 'transport';
 import * as config from 'transport/config';
-import { backendTreeToClientTree } from 'transport/treeMapping';
+import { backendTreeToClientTree, backendChildrenToItems } from 'transport/treeMapping';
 import {
   createWorkspace,
   removeWorkspace,
@@ -12,7 +12,8 @@ import {
   createCollection as _createCollection,
   removeCollection,
   updateCollectionMountStatus,
-  collectionLoadedFromTree
+  collectionLoadedFromTree,
+  applyBackendFolderChildren
 } from 'providers/ReduxStore/slices/collections';
 
 /** Run `fn` over `items` at most `limit` at a time. */
@@ -274,16 +275,22 @@ export const switchToTeamWorkspace = (workspaceUid) => async (dispatch, getState
 
   // The collection list already renders; stream the trees in with a bounded
   // fan-out so a big workspace doesn't fire one request per collection at once.
-  await mapWithConcurrency(cols, 5, (c) => dispatch(refetchTeamCollectionTree(c.id)));
+  // Shallow (root only) — folders load their children when first expanded.
+  await mapWithConcurrency(cols, 5, (c) => dispatch(refetchTeamCollectionTree(c.id, { shallow: true })));
 
   dispatch(backendSyncStatusChanged({ workspaceId: backendId, status: 'ready' }));
 };
 
-/** Re-pull one team collection's tree + environments (used on load and by the sync middleware). */
-export const refetchTeamCollectionTree = (backendCollectionId) => async (dispatch) => {
+/**
+ * Re-pull one team collection's tree + environments. `shallow` fetches only the
+ * root (folders as stubs, expanded on demand by loadTeamFolderChildren) — used
+ * when mounting a workspace so a big collection doesn't pull every request
+ * spec. The sync-middleware fallback path fetches the full tree.
+ */
+export const refetchTeamCollectionTree = (backendCollectionId, { shallow = false } = {}) => async (dispatch) => {
   try {
     const [bt, envRes] = await Promise.all([
-      transport.backend.getCollectionTree(backendCollectionId),
+      transport.backend.getCollectionTree(backendCollectionId, shallow ? { depth: 1 } : {}),
       transport.backend.listCollectionEnvironments(backendCollectionId).catch(() => ({ environments: [] }))
     ]);
     dispatch(
@@ -294,6 +301,32 @@ export const refetchTeamCollectionTree = (backendCollectionId) => async (dispatc
     );
   } catch {
     /* transient — the next event or reconnect will retry */
+  }
+};
+
+// Folders whose children are being fetched, so a double-expand doesn't double-fetch.
+const foldersLoadingChildren = new Set();
+
+/**
+ * Lazy tree load: fetch one team folder's direct children and merge them under
+ * it. Fired by the sidebar the first time a stubbed team folder is expanded.
+ */
+export const loadTeamFolderChildren = (collectionUid, folderUid) => async (dispatch) => {
+  if (foldersLoadingChildren.has(folderUid)) return;
+  foldersLoadingChildren.add(folderUid);
+  try {
+    const res = await transport.backend.getFolderChildren(folderUid);
+    dispatch(
+      applyBackendFolderChildren({
+        collectionUid,
+        folderUid,
+        items: backendChildrenToItems(res.items || [])
+      })
+    );
+  } catch {
+    /* transient — collapsing and re-expanding retries */
+  } finally {
+    foldersLoadingChildren.delete(folderUid);
   }
 };
 

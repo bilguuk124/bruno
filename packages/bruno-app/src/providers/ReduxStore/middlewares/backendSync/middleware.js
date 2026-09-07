@@ -9,13 +9,15 @@ import {
   deleteItem as removeItemFromTree,
   applyBackendItemChange,
   applyBackendItemCreate,
-  applyBackendItemMove
+  applyBackendItemMove,
+  toggleCollectionItem
 } from 'providers/ReduxStore/slices/collections';
 import {
   TEAM_PREFIX,
   backendSyncStatusChanged,
   backendReset,
-  refetchTeamCollectionTree
+  refetchTeamCollectionTree,
+  loadTeamFolderChildren
 } from 'providers/ReduxStore/slices/backend';
 
 /**
@@ -127,14 +129,17 @@ const applyChangeEvent = (api, ev) => {
   }
 
   const { item: incoming, folderId } = changePatchToItem(ev.patch);
-  const parentLoaded = !folderId || Boolean(findItemInCollection(collection, folderId));
+  // With lazy tree load a folder can be in the tree as a stub. An event landing
+  // inside a folder whose children we haven't loaded is a no-op — those
+  // children are fetched wholesale when the folder is first expanded.
+  const parentFolder = folderId ? findItemInCollection(collection, folderId) : null;
+  // Ready unless the parent is a lazy stub we haven't expanded (childrenLoaded
+  // explicitly false), or isn't in the loaded tree at all.
+  const parentReady = !folderId || Boolean(parentFolder && parentFolder.childrenLoaded !== false);
 
   if (ev.op === 'create') {
     if (findItemInCollection(collection, incoming.uid)) return; // already have it
-    if (!parentLoaded) {
-      scheduleRefetch(api.dispatch, backendCollectionId);
-      return;
-    }
+    if (!parentReady) return; // loads with the folder
     api.dispatch(applyBackendItemCreate({ collectionUid, parentFolderId: folderId, item: incoming }));
     return;
   }
@@ -142,12 +147,13 @@ const applyChangeEvent = (api, ev) => {
   if (ev.op === 'update') {
     const existing = findItemInCollection(collection, incoming.uid);
     if (!existing) {
-      scheduleRefetch(api.dispatch, backendCollectionId);
+      if (parentReady) scheduleRefetch(api.dispatch, backendCollectionId); // missed a create at a loaded level
       return;
     }
     if ((folderId || null) !== parentIdOf(collection, existing.uid)) {
-      if (!parentLoaded) {
-        scheduleRefetch(api.dispatch, backendCollectionId);
+      if (!parentReady) {
+        // moved into an unloaded folder — drop it here; it reappears on expand
+        api.dispatch(removeItemFromTree({ itemUid: existing.uid, collectionUid }));
         return;
       }
       api.dispatch(applyBackendItemMove({ collectionUid, itemUid: existing.uid, parentFolderId: folderId, incoming }));
@@ -189,6 +195,23 @@ backendSyncMiddleware.startListening({
 backendSyncMiddleware.startListening({
   actionCreator: backendReset,
   effect: () => closeSocket()
+});
+
+// Lazy tree load: when a stubbed team folder is expanded for the first time,
+// fetch its children. The effect runs after the reducer, so `collapsed` here is
+// the post-toggle value.
+backendSyncMiddleware.startListening({
+  actionCreator: toggleCollectionItem,
+  effect: (action, api) => {
+    const { collectionUid, itemUid } = action.payload;
+    const collection = findCollectionByUid(api.getState().collections.collections, collectionUid);
+    if (collection?.origin !== 'team') return;
+
+    const folder = findItemInCollection(collection, itemUid);
+    if (folder?.type === 'folder' && !folder.collapsed && folder.childrenLoaded === false) {
+      api.dispatch(loadTeamFolderChildren(collectionUid, itemUid));
+    }
+  }
 });
 
 export default backendSyncMiddleware;

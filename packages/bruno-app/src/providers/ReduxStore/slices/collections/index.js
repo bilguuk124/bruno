@@ -78,7 +78,15 @@ const mergeTreeItems = (existingItems, newItems) => {
 
     if (newItem.type === 'folder') {
       const merged = { ...existing, ...pick(newItem, FILE_DERIVED_FOLDER_FIELDS) };
-      merged.items = mergeTreeItems(existing.items, newItem.items || []);
+      // A lazy stub (childrenLoaded === false, no items) must not wipe a subtree
+      // we already loaded — keep it and its loaded flag.
+      if (newItem.childrenLoaded === false && existing.childrenLoaded) {
+        merged.items = existing.items;
+        merged.childrenLoaded = true;
+      } else {
+        merged.items = mergeTreeItems(existing.items, newItem.items || []);
+        merged.childrenLoaded = newItem.childrenLoaded ?? existing.childrenLoaded;
+      }
       return merged;
     }
 
@@ -3759,6 +3767,24 @@ export const collectionsSlice = createSlice({
     },
 
     /**
+     * Lazy tree load: the one level of children fetched when a team folder is
+     * first expanded. Items already held (an optimistic create, a draft) are
+     * kept; the rest are appended (the sidebar sorts by `seq` at render time).
+     */
+    applyBackendFolderChildren: (state, action) => {
+      const { collectionUid, folderUid, items } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      if (!collection) return;
+      const folder = findItemInCollection(collection, folderUid);
+      if (!folder || folder.type !== 'folder') return;
+
+      const held = new Set((folder.items || []).map((i) => i.uid));
+      folder.items = [...(folder.items || []), ...items.filter((i) => !held.has(i.uid))];
+      folder.childrenLoaded = true;
+      addDepth(collection.items);
+    },
+
+    /**
      * A teammate created an item — insert it under its parent. The sidebar
      * orders siblings by `seq` at render time, so array position doesn't
      * matter; the item just has to be in the right parent's `items`. A no-op
@@ -4286,6 +4312,7 @@ export const {
   applyBackendItemChange,
   applyBackendItemCreate,
   applyBackendItemMove,
+  applyBackendFolderChildren,
   setItemSyncState,
   setItemConflict,
   clearItemConflict,

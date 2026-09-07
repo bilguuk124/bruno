@@ -10,12 +10,18 @@ jest.mock('transport/sync', () =>
 
 jest.mock('transport', () => ({
   __esModule: true,
-  default: { isRemote: () => true, isAuthenticated: () => true }
+  default: {
+    isRemote: () => true,
+    isAuthenticated: () => true,
+    backend: { getFolderChildren: jest.fn().mockResolvedValue({ items: [] }) }
+  }
 }));
 
 import SyncSocket from 'transport/sync';
+import transport from 'transport';
 import backendSyncMiddleware from './middleware';
 import { backendReset } from 'providers/ReduxStore/slices/backend';
+import { toggleCollectionItem } from 'providers/ReduxStore/slices/collections';
 
 const makeStore = (workspaces) =>
   configureStore({
@@ -114,7 +120,9 @@ describe('applyChangeEvent — granular tree sync', () => {
   };
 
   it('a create event under a loaded folder inserts granularly (no refetch)', () => {
-    const { onEvent, dispatched } = makeSyncStore([{ uid: 'f1', type: 'folder', name: 'Users', items: [] }]);
+    const { onEvent, dispatched } = makeSyncStore([
+      { uid: 'f1', type: 'folder', name: 'Users', items: [], childrenLoaded: true }
+    ]);
     onEvent({
       entityType: 'request',
       entityId: 'r1',
@@ -125,9 +133,41 @@ describe('applyChangeEvent — granular tree sync', () => {
     expect(dispatched.map((a) => a.type)).not.toContain('collections/collectionLoadedFromTree');
   });
 
+  it('a create event under an unexpanded (stub) folder is a no-op — it loads with the folder', () => {
+    const { onEvent, dispatched } = makeSyncStore([
+      { uid: 'f1', type: 'folder', name: 'Users', items: [], childrenLoaded: false }
+    ]);
+    onEvent({
+      entityType: 'request',
+      entityId: 'r1',
+      op: 'create',
+      patch: { id: 'r1', type: 'http-request', name: 'List', collectionId: 'c1', folderId: 'f1', seq: 1, spec: {} }
+    });
+    expect(dispatched).toHaveLength(0);
+  });
+
+  it('expanding a stub team folder fetches its children', async () => {
+    const { store } = makeSyncStore([
+      { uid: 'f1', type: 'folder', name: 'Users', items: [], collapsed: false, childrenLoaded: false }
+    ]);
+    transport.backend.getFolderChildren.mockClear();
+    store.dispatch(toggleCollectionItem({ collectionUid: 'team:c1', itemUid: 'f1' }));
+    await Promise.resolve();
+    expect(transport.backend.getFolderChildren).toHaveBeenCalledWith('f1');
+  });
+
+  it('does not fetch children for an already-loaded folder', () => {
+    const { store } = makeSyncStore([
+      { uid: 'f1', type: 'folder', name: 'Users', items: [], collapsed: false, childrenLoaded: true }
+    ]);
+    transport.backend.getFolderChildren.mockClear();
+    store.dispatch(toggleCollectionItem({ collectionUid: 'team:c1', itemUid: 'f1' }));
+    expect(transport.backend.getFolderChildren).not.toHaveBeenCalled();
+  });
+
   it('an update that changes the parent relocates granularly', () => {
     const { onEvent, dispatched } = makeSyncStore([
-      { uid: 'f1', type: 'folder', name: 'Users', items: [] },
+      { uid: 'f1', type: 'folder', name: 'Users', items: [], childrenLoaded: true },
       { uid: 'r1', type: 'http-request', name: 'List', request: {}, revision: 1 }
     ]);
     onEvent({

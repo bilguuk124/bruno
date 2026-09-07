@@ -182,8 +182,13 @@ export default class BackendClient {
     return this.get(`/workspaces/${workspaceId}/collections`);
   }
 
-  getCollectionTree(collectionId) {
-    return this.get(`/collections/${collectionId}/tree`);
+  getCollectionTree(collectionId, { depth } = {}) {
+    const qs = depth ? `?depth=${depth}` : '';
+    return this.get(`/collections/${collectionId}/tree${qs}`);
+  }
+
+  getFolderChildren(folderId) {
+    return this.get(`/folders/${folderId}/children`);
   }
 
   updateCollection(collectionId, patch, revision) {

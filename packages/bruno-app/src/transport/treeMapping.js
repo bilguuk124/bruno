@@ -60,11 +60,20 @@ export const nodeToItem = (node) => {
   };
 
   if (node.kind === 'folder') {
+    const items = (node.items || []).map(nodeToItem);
     return {
       ...base,
       type: 'folder',
+      // Collapsed on load, like a filesystem collection — and, for a lazy stub,
+      // so its first expand is what triggers the children fetch.
+      collapsed: true,
       root: isObject(node.rootSpec) ? node.rootSpec : {},
-      items: (node.items || []).map(nodeToItem)
+      items,
+      // A depth-limited response (`tree?depth=1`, `folders/{id}/children`) sends
+      // non-empty folders as stubs: `hasChildren` set, no `items`. The sidebar
+      // fetches those on first expand. Everything else — a full tree, an empty
+      // folder — is already complete.
+      childrenLoaded: !node.hasChildren || items.length > 0
     };
   }
 
@@ -85,6 +94,9 @@ export const nodeToItem = (node) => {
     })
   };
 };
+
+/** The GET /folders/:id/children response items -> Bruno items (one level). */
+export const backendChildrenToItems = (nodes = []) => nodes.map(nodeToItem);
 
 /**
  * A WS `change` frame's `patch` is the backend row, not a TreeNode: it uses
