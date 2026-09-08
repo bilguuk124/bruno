@@ -13,6 +13,7 @@ import Assertions from 'components/RequestPane/Assertions';
 import Script from 'components/RequestPane/Script';
 import Tests from 'components/RequestPane/Tests';
 import Settings from 'components/RequestPane/Settings';
+import RequestVersions from 'components/RequestPane/RequestVersions';
 import AppCodeEditor from 'components/RequestPane/AppCodeEditor';
 import Documentation from 'components/Documentation/index';
 import DocsAction from 'components/Documentation/DocsAction';
@@ -34,6 +35,7 @@ const TAB_CONFIG = [
   { key: 'tests', label: 'Tests' },
   { key: 'docs', label: 'Docs' },
   { key: 'app', label: 'App' },
+  { key: 'versions', label: 'Versions' },
   { key: 'settings', label: 'Settings' }
 ];
 
@@ -48,6 +50,7 @@ const TAB_PANELS = {
   tests: Tests,
   docs: Documentation,
   app: AppCodeEditor,
+  versions: RequestVersions,
   settings: Settings
 };
 
@@ -78,8 +81,13 @@ const HttpRequestPane = ({ item, collection }) => {
   const tags = getProperty('tags');
   const app = getProperty('app', null);
   const appTabEnabled = app?.enabled === true;
-  // A previously selected App tab may be restored while apps are disabled in settings.
-  const effectiveTab = requestPaneTab === 'app' && !appTabEnabled ? 'params' : requestPaneTab;
+  // Version history is backend-only.
+  const versionsTabEnabled = collection?.origin === 'team';
+  // A previously selected tab may be restored while it no longer applies (apps
+  // disabled in settings, or a local collection with no version history).
+  const tabUnavailable
+    = (requestPaneTab === 'app' && !appTabEnabled) || (requestPaneTab === 'versions' && !versionsTabEnabled);
+  const effectiveTab = tabUnavailable ? 'params' : requestPaneTab;
 
   const activeCounts = useMemo(() => ({
     params: params.filter((p) => p.enabled).length,
@@ -122,9 +130,9 @@ const HttpRequestPane = ({ item, collection }) => {
 
   const allTabs = useMemo(
     () => TAB_CONFIG
-      .filter(({ key }) => key !== 'app' || appTabEnabled)
+      .filter(({ key }) => (key !== 'app' || appTabEnabled) && (key !== 'versions' || versionsTabEnabled))
       .map(({ key, label }) => ({ key, label, indicator: indicators[key] })),
-    [indicators, appTabEnabled]
+    [indicators, appTabEnabled, versionsTabEnabled]
   );
 
   const tabPanel = useMemo(() => {

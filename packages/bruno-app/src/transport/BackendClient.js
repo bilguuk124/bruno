@@ -221,6 +221,16 @@ export default class BackendClient {
     return this.del(`/requests/${requestId}`);
   }
 
+  // --- version history (collections / folders / requests) ---
+
+  getRequestHistory(requestId, { limit } = {}) {
+    return this.get(`/requests/${requestId}/history${limit ? `?limit=${limit}` : ''}`);
+  }
+
+  restoreRequestVersion(requestId, seq, revision) {
+    return this.post(`/requests/${requestId}/restore`, { seq }, { ifMatch: revision });
+  }
+
   // --- folders ---
 
   createFolder(collectionId, body) {
