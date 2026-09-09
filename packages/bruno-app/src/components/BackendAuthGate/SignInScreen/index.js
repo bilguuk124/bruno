@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import Bruno from 'components/Bruno';
 import Button from 'ui/Button';
-import { connectAndAuthenticate } from 'providers/ReduxStore/slices/backend';
+import transport from 'transport';
+import { connectAndAuthenticate, startSsoLogin } from 'providers/ReduxStore/slices/backend';
 import { getBaseUrl } from 'transport/config';
+import { isElectron } from 'utils/common/platform';
 import StyledWrapper from '../StyledWrapper';
 
 const prettyHost = (url) => (url || '').replace(/^https?:\/\//, '');
 
 /**
- * Full-window sign-in for a managed deployment (pinned backend URL). Login
- * only — first-user / admin provisioning is done out of band (seed script,
- * invite). No server-URL field: it's fixed by the deployment.
+ * Full-window sign-in for a managed deployment (pinned backend URL). Password
+ * login, plus a "Sign in with SSO" button when the deployment has OIDC
+ * configured (`GET /auth/providers`). First-user / admin provisioning is done
+ * out of band. No server-URL field: it's fixed by the deployment.
  */
 const SignInScreen = () => {
   const dispatch = useDispatch();
@@ -19,8 +22,22 @@ const SignInScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // SSO redirects the whole window away, so it only works in the browser build.
+  const [ssoAvailable, setSsoAvailable] = useState(false);
 
   const backendUrl = getBaseUrl();
+
+  useEffect(() => {
+    if (isElectron()) return;
+    let live = true;
+    transport.backend
+      .authProviders()
+      .then((p) => live && setSsoAvailable(Boolean(p?.oidc)))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -71,6 +88,15 @@ const SignInScreen = () => {
             {submitting ? 'Signing in…' : 'Sign in'}
           </Button>
         </div>
+
+        {ssoAvailable ? (
+          <>
+            <div className="signin-divider">or</div>
+            <Button type="button" size="sm" color="secondary" variant="outline" onClick={startSsoLogin}>
+              Sign in with SSO
+            </Button>
+          </>
+        ) : null}
       </form>
     </StyledWrapper>
   );

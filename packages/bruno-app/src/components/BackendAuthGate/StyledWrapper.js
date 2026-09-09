@@ -70,6 +70,13 @@ const StyledWrapper = styled.div`
     margin-bottom: 0.75rem;
   }
 
+  .signin-divider {
+    font-size: 0.75rem;
+    text-align: center;
+    margin: 0.25rem 0;
+    color: ${(props) => props.theme.colors?.text?.muted || props.theme.text};
+  }
+
   .signin-actions {
     display: flex;
     gap: 0.5rem;

@@ -166,6 +166,57 @@ export const connectAndAuthenticate
 /** Back-compat alias — log in without registering. */
 export const connectAndLogin = (args) => connectAndAuthenticate({ ...args, register: false });
 
+// Reasons the OIDC callback can hand back in `#sso_error=<reason>`, mapped to
+// something a user can act on.
+const SSO_ERROR_MESSAGES = {
+  state: 'The sign-in flow expired or was interrupted. Please try again.',
+  email_unverified: 'Your identity provider did not confirm a verified email address.',
+  no_account: 'You don\'t have an account yet — ask an admin to invite you.',
+  account_disabled: 'This account is disabled.',
+  access_denied: 'Sign-in was cancelled.',
+  provider: 'The identity provider rejected the sign-in.'
+};
+
+/**
+ * The OIDC callback redirects the browser to `<publicUrl>/#sso_token=<token>`
+ * (or `#sso_error=<reason>`). Adopt the token before initBackendConnection runs;
+ * surface the error otherwise. The fragment is stripped either way so a refresh
+ * doesn't replay it.
+ */
+export const adoptSsoRedirect = () => (dispatch) => {
+  let hash;
+  try {
+    hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  } catch {
+    return;
+  }
+  const token = hash.get('sso_token');
+  const error = hash.get('sso_error');
+  if (!token && !error) return;
+
+  try {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  } catch {
+    /* history unavailable — the stale fragment is harmless */
+  }
+
+  if (token) {
+    config.setToken(token);
+    return; // initBackendConnection validates + loads on the next dispatch
+  }
+  dispatch(
+    backendStatusChanged({
+      status: 'unauthenticated',
+      error: SSO_ERROR_MESSAGES[error] || 'Single sign-on failed.'
+    })
+  );
+};
+
+/** Send the browser to the backend's OIDC login endpoint. */
+export const startSsoLogin = () => {
+  window.location.assign(`${config.getBaseUrl()}/api/v1/auth/oidc/login`);
+};
+
 /** Log out but keep the configured URL, so the login form stays pre-filled. */
 export const logoutBackend = () => async (dispatch, getState) => {
   dispatch(teardownTeamWorkspaces());

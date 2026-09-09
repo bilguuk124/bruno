@@ -100,6 +100,10 @@ export default class BackendClient {
     return this.post('/auth/logout');
   }
 
+  authProviders() {
+    return this.get('/auth/providers');
+  }
+
   me() {
     return this.get('/auth/me');
   }

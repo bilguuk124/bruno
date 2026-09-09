@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { get } from 'lodash';
 import { useDispatch } from 'react-redux';
 import { refreshScreenWidth, hydrateSidebarState } from 'providers/ReduxStore/slices/app';
-import { initBackendConnection } from 'providers/ReduxStore/slices/backend';
+import { initBackendConnection, adoptSsoRedirect } from 'providers/ReduxStore/slices/backend';
 import ConfirmAppClose from './ConfirmAppClose';
 import MigrateCollectionToYmlModal from 'components/MigrateCollectionToYmlModal';
 import useIpcEvents from './useIpcEvents';
@@ -24,6 +24,7 @@ export const AppProvider = (props) => {
   useEffect(() => {
     dispatch(refreshScreenWidth());
     dispatch(hydrateSidebarState());
+    dispatch(adoptSsoRedirect()); // pick up a token from an OIDC callback redirect first
     dispatch(initBackendConnection());
     // v3.5.0 v4 migration tab state; feature was removed from main.
     localStorage.removeItem('v4-migration');
