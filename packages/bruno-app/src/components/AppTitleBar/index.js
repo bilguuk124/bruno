@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPin, IconPinned, IconPlus, IconDownload, IconSettings, IconMinus, IconSquare, IconX, IconCopy, IconUsers } from '@tabler/icons';
+import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPin, IconPinned, IconPlus, IconDownload, IconSettings, IconMinus, IconSquare, IconX, IconCopy, IconUsers, IconHistory } from '@tabler/icons';
 import { forwardRef, useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useDispatch, useSelector } from 'react-redux';
@@ -20,6 +20,7 @@ import CreateWorkspace from 'components/WorkspaceSidebar/CreateWorkspace';
 import ImportWorkspace from 'components/WorkspaceSidebar/ImportWorkspace';
 import TeamSettings from 'components/TeamSettings';
 import CreateTeamWorkspace from 'components/CreateTeamWorkspace';
+import WorkspaceHistory from 'components/WorkspaceHistory';
 
 import IconBottombarToggle from 'components/Icons/IconBottombarToggle/index';
 import AppMenu from './AppMenu';
@@ -133,6 +134,7 @@ const AppTitleBar = () => {
   const [createWorkspaceModalOpen, setCreateWorkspaceModalOpen] = useState(false);
   const [importWorkspaceModalOpen, setImportWorkspaceModalOpen] = useState(false);
   const [teamSettingsOpen, setTeamSettingsOpen] = useState(false);
+  const [workspaceHistoryOpen, setWorkspaceHistoryOpen] = useState(false);
   const [createTeamWorkspaceOpen, setCreateTeamWorkspaceOpen] = useState(false);
 
   const WorkspaceName = forwardRef((props, ref) => {
@@ -248,6 +250,12 @@ const AppTitleBar = () => {
           leftSection: IconUsers,
           label: 'Members & invites',
           onClick: () => setTeamSettingsOpen(true)
+        },
+        {
+          id: 'workspace-history',
+          leftSection: IconHistory,
+          label: 'Request history',
+          onClick: () => setWorkspaceHistoryOpen(true)
         }
       );
     }
@@ -304,6 +312,9 @@ const AppTitleBar = () => {
       )}
       {teamSettingsOpen && activeWorkspace?.type === 'team' && (
         <TeamSettings workspace={activeWorkspace} onClose={() => setTeamSettingsOpen(false)} />
+      )}
+      {workspaceHistoryOpen && activeWorkspace?.type === 'team' && (
+        <WorkspaceHistory workspace={activeWorkspace} onClose={() => setWorkspaceHistoryOpen(false)} />
       )}
       {createTeamWorkspaceOpen && (
         <CreateTeamWorkspace onClose={() => setCreateTeamWorkspaceOpen(false)} />
