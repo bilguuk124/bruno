@@ -14,16 +14,42 @@ import { getBaseUrl, getToken } from './config';
  * The socket is only ever opened by the backendSync middleware, and only for a
  * team workspace — local/default workspaces have no backend to sync with.
  */
+// The server drops a presence claim after 30s without a refresh.
+const PRESENCE_HEARTBEAT_MS = 15_000;
+
 export default class SyncSocket {
-  constructor({ workspaceId, onEvent, onStatus }) {
+  constructor({ workspaceId, onEvent, onStatus, onPresence }) {
     this.workspaceId = workspaceId;
     this.onEvent = onEvent || (() => {});
     this.onStatus = onStatus || (() => {});
+    this.onPresence = onPresence || (() => {});
     this.cursor = null;
     this.stopped = false;
     this.retry = 0;
     this.ws = null;
     this.reconnectTimer = null;
+    this.presenceResource = '';
+    this.presenceTimer = null;
+  }
+
+  /** Tell the workspace which resource this client is now viewing ('' = none). */
+  setPresence(resource) {
+    this.presenceResource = resource || '';
+    this.#sendPresence();
+    clearInterval(this.presenceTimer);
+    this.presenceTimer = this.presenceResource
+      ? setInterval(() => this.#sendPresence(), PRESENCE_HEARTBEAT_MS)
+      : null;
+  }
+
+  #sendPresence() {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({ type: 'presence', resource: this.presenceResource }));
+      } catch {
+        /* socket went away — resent on reconnect */
+      }
+    }
   }
 
   wsUrl() {
@@ -40,6 +66,8 @@ export default class SyncSocket {
   stop() {
     this.stopped = true;
     clearTimeout(this.reconnectTimer);
+    clearInterval(this.presenceTimer);
+    this.presenceTimer = null;
     if (this.ws) {
       try {
         this.ws.close(1000, 'client stop');
@@ -87,6 +115,9 @@ export default class SyncSocket {
       } else if (frame.cursor > this.cursor) {
         await this.#backfill();
       }
+      // Re-assert our presence claim, which the server dropped on the last
+      // disconnect.
+      if (this.presenceResource) this.#sendPresence();
       this.onStatus('connected');
       return;
     }
@@ -97,6 +128,11 @@ export default class SyncSocket {
         this.cursor = ev.seq;
         this.onEvent(ev);
       }
+      return;
+    }
+
+    if (frame.type === 'presence') {
+      this.onPresence({ resource: frame.resource, users: frame.users || [] });
     }
   }
 

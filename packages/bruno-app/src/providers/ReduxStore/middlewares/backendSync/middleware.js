@@ -17,7 +17,9 @@ import {
   backendSyncStatusChanged,
   backendReset,
   refetchTeamCollectionTree,
-  loadTeamFolderChildren
+  loadTeamFolderChildren,
+  presenceUpdated,
+  presenceCleared
 } from 'providers/ReduxStore/slices/backend';
 
 /**
@@ -32,6 +34,9 @@ const backendSyncMiddleware = createListenerMiddleware();
 
 let socket = null;
 let socketWorkspaceId = null;
+// The `request:<uid>` (or '') presence resource last sent to the socket, so a
+// no-op tab switch doesn't re-send.
+let lastPresenceResource = '';
 const refetchTimers = new Map();
 
 const wantsSync = (workspace) =>
@@ -46,6 +51,7 @@ const closeSocket = () => {
     socket = null;
     socketWorkspaceId = null;
   }
+  lastPresenceResource = '';
   for (const t of refetchTimers.values()) clearTimeout(t);
   refetchTimers.clear();
 };
@@ -166,6 +172,21 @@ const applyChangeEvent = (api, ev) => {
   scheduleRefetch(api.dispatch, backendCollectionId);
 };
 
+/**
+ * Tell the socket which team request the user is looking at now — a
+ * `request:<uid>` claim, or none when the active tab isn't a team request.
+ */
+const syncPresenceToActiveTab = (state) => {
+  if (!socket || !state.tabs) return;
+  const tab = state.tabs.tabs.find((t) => t.uid === state.tabs.activeTabUid);
+  const collection = tab && findCollectionByUid(state.collections.collections, tab.collectionUid);
+  const isTeamRequest = collection?.origin === 'team' && tab?.type && tab.type.endsWith('-request');
+  const resource = isTeamRequest ? `request:${tab.uid}` : '';
+  if (resource === lastPresenceResource) return;
+  lastPresenceResource = resource;
+  socket.setPresence(resource);
+};
+
 backendSyncMiddleware.startListening({
   actionCreator: setActiveWorkspace,
   effect: (action, api) => {
@@ -181,15 +202,23 @@ backendSyncMiddleware.startListening({
     if (socket && socketWorkspaceId === backendId) return; // already connected
 
     closeSocket();
+    api.dispatch(presenceCleared());
     socketWorkspaceId = backendId;
     socket = new SyncSocket({
       workspaceId: backendId,
       onEvent: (ev) => applyChangeEvent(api, ev),
+      onPresence: (p) => api.dispatch(presenceUpdated(p)),
       onStatus: (status) =>
         api.dispatch(backendSyncStatusChanged({ workspaceId: backendId, status: `ws:${status}` }))
     });
     socket.start();
+    syncPresenceToActiveTab(api.getState());
   }
+});
+
+backendSyncMiddleware.startListening({
+  predicate: (action) => typeof action.type === 'string' && action.type.startsWith('tabs/'),
+  effect: (_action, api) => syncPresenceToActiveTab(api.getState())
 });
 
 backendSyncMiddleware.startListening({

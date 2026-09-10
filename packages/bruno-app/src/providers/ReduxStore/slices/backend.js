@@ -55,7 +55,9 @@ const initialState = {
   // workspaces slice as `team:<id>` entries with type 'team'.
   teamWorkspaces: [],
   // Realtime sync state for the currently-active team workspace.
-  sync: { workspaceId: null, status: 'idle' } // idle | loading | ready | error | ws:connecting | ws:connected | ws:reconnecting | ws:disconnected
+  sync: { workspaceId: null, status: 'idle' }, // idle | loading | ready | error | ws:connecting | ws:connected | ws:reconnecting | ws:disconnected
+  // Who is viewing what in the active team workspace: { [resource]: [{ userId, name }] }.
+  presence: {}
 };
 
 const slice = createSlice({
@@ -80,6 +82,7 @@ const slice = createSlice({
       state.error = null;
       state.teamWorkspaces = [];
       state.sync = { workspaceId: null, status: 'idle' };
+      state.presence = {};
     },
     teamWorkspacesLoaded: (state, action) => {
       state.teamWorkspaces = action.payload;
@@ -90,6 +93,18 @@ const slice = createSlice({
         status: action.payload.status,
         error: action.payload.error
       };
+    },
+    presenceUpdated: (state, action) => {
+      const { resource, users } = action.payload;
+      if (!resource) return;
+      if (users && users.length) {
+        state.presence[resource] = users;
+      } else {
+        delete state.presence[resource];
+      }
+    },
+    presenceCleared: (state) => {
+      state.presence = {};
     }
   }
 });
@@ -99,7 +114,9 @@ export const {
   backendUserLoaded,
   backendReset,
   teamWorkspacesLoaded,
-  backendSyncStatusChanged
+  backendSyncStatusChanged,
+  presenceUpdated,
+  presenceCleared
 } = slice.actions;
 
 /**

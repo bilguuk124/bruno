@@ -24,6 +24,7 @@ import { hasRequestChanges } from 'utils/collections';
 import StyledWrapper from './StyledWrapper';
 import GenerateCodeItem from 'components/Sidebar/Collections/Collection/CollectionItem/GenerateCodeItem/index';
 import ToolHint from 'components/ToolHint';
+import PresenceAvatars from 'components/PresenceAvatars';
 import toast from 'react-hot-toast';
 
 const QueryUrl = ({ item, collection, handleRun }) => {
@@ -417,6 +418,7 @@ const QueryUrl = ({ item, collection, handleRun }) => {
             disableLinkAwareClick={true}
           />
           <div className="flex items-center h-full mx-2 gap-3" id="request-actions">
+            {collection?.origin === 'team' && <PresenceAvatars resource={`request:${item.uid}`} />}
             <ToolHint text="Generate Code" toolhintId="http-generate-code" place="top" positionStrategy="fixed">
               <div
                 className="flex items-center"

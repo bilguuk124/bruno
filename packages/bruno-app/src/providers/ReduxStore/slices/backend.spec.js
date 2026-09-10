@@ -10,7 +10,7 @@ jest.mock('transport/config', () => ({
 jest.mock('transport', () => ({ __esModule: true, default: { backend: {} } }));
 
 import * as config from 'transport/config';
-import reducer, { adoptSsoRedirect, backendStatusChanged } from './backend';
+import reducer, { adoptSsoRedirect, backendStatusChanged, presenceUpdated, presenceCleared, backendReset } from './backend';
 
 const setToken = config.setToken;
 
@@ -70,4 +70,27 @@ it('a later plain unauthenticated status keeps the sso error', () => {
   store.dispatch(adoptSsoRedirect());
   store.dispatch(backendStatusChanged({ status: 'unauthenticated' }));
   expect(store.getState().backend.error).toMatch(/expired/i);
+});
+
+describe('presence', () => {
+  it('presenceUpdated stores a roster and drops it when empty', () => {
+    const store = makeStore();
+    store.dispatch(presenceUpdated({ resource: 'request:r1', users: [{ userId: 'a', name: 'A' }] }));
+    expect(store.getState().backend.presence['request:r1']).toEqual([{ userId: 'a', name: 'A' }]);
+
+    store.dispatch(presenceUpdated({ resource: 'request:r1', users: [] }));
+    expect(store.getState().backend.presence['request:r1']).toBeUndefined();
+  });
+
+  it('presenceCleared and backendReset wipe all rosters', () => {
+    const store = makeStore();
+    store.dispatch(presenceUpdated({ resource: 'request:r1', users: [{ userId: 'a', name: 'A' }] }));
+
+    store.dispatch(presenceCleared());
+    expect(store.getState().backend.presence).toEqual({});
+
+    store.dispatch(presenceUpdated({ resource: 'request:r2', users: [{ userId: 'b', name: 'B' }] }));
+    store.dispatch(backendReset());
+    expect(store.getState().backend.presence).toEqual({});
+  });
 });

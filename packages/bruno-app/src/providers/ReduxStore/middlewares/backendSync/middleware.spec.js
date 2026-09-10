@@ -3,9 +3,10 @@ import { setActiveWorkspace } from 'providers/ReduxStore/slices/workspaces';
 
 const mockStart = jest.fn();
 const mockStop = jest.fn();
+const mockSetPresence = jest.fn();
 
 jest.mock('transport/sync', () =>
-  jest.fn().mockImplementation((opts) => ({ opts, start: mockStart, stop: mockStop }))
+  jest.fn().mockImplementation((opts) => ({ opts, start: mockStart, stop: mockStop, setPresence: mockSetPresence }))
 );
 
 jest.mock('transport', () => ({
@@ -43,7 +44,31 @@ beforeEach(() => {
   makeStore([]).dispatch(backendReset());
   mockStart.mockClear();
   mockStop.mockClear();
+  mockSetPresence.mockClear();
   SyncSocket.mockClear();
+});
+
+it('claims / releases a presence resource as the active tab changes', () => {
+  const store = configureStore({
+    reducer: {
+      workspaces: (state = { workspaces: [{ uid: 'team:abc', type: 'team', backendId: 'abc' }], activeWorkspaceUid: null }, action) =>
+        action.type === setActiveWorkspace.type ? { ...state, activeWorkspaceUid: action.payload } : state,
+      collections: (state = { collections: [{ uid: 'team:c1', origin: 'team', backendId: 'c1', workspaceBackendId: 'abc', items: [] }] }) => state,
+      tabs: (state = { tabs: [{ uid: 'r1', collectionUid: 'team:c1', type: 'http-request' }], activeTabUid: null }, action) =>
+        action.type === 'tabs/focusTab' ? { ...state, activeTabUid: action.payload.uid } : state,
+      backend: (state = {}) => state
+    },
+    middleware: (getDefault) => getDefault().prepend(backendSyncMiddleware.middleware)
+  });
+
+  store.dispatch(setActiveWorkspace('team:abc'));
+  mockSetPresence.mockClear();
+
+  store.dispatch({ type: 'tabs/focusTab', payload: { uid: 'r1' } });
+  expect(mockSetPresence).toHaveBeenLastCalledWith('request:r1');
+
+  store.dispatch({ type: 'tabs/focusTab', payload: { uid: 'nope' } });
+  expect(mockSetPresence).toHaveBeenLastCalledWith('');
 });
 
 it('opens a socket only for a team workspace', () => {
