@@ -21,7 +21,7 @@ import {
   backendVarToClientVar,
   brunoConfigToSettings
 } from 'transport/treeMapping';
-import { buildHistoryEntry, collectSecretValues } from 'transport/history';
+import { buildHistoryEntry, collectSecretValues, captureResponseBody } from 'transport/history';
 import { addTab, closeTabs } from 'providers/ReduxStore/slices/tabs';
 import {
   newItem,
@@ -606,11 +606,13 @@ export const teamSaveFolderRoot = (collectionUid, folderUid, silent = false) => 
 
 /**
  * Record one request execution to the team's shared history. Fire-and-forget:
- * a failed record must never disrupt the request flow. The snapshot is redacted
- * client-side (auth headers dropped, known secret values masked) before it
- * leaves the renderer.
+ * a failed record must never disrupt the request flow. The snapshot and the
+ * captured response body are redacted client-side (auth headers dropped, known
+ * secret values masked) before anything leaves the renderer; a text/JSON body
+ * under the size cap is uploaded to the workspace blob store and referenced by
+ * id.
  */
-export const teamRecordHistory = ({ itemUid, collectionUid, response, requestSent }) => (dispatch, getState) => {
+export const teamRecordHistory = ({ itemUid, collectionUid, response, requestSent }) => async (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
   if (!collection || collection.origin !== 'team' || !collection.workspaceBackendId) return;
@@ -623,10 +625,25 @@ export const teamRecordHistory = ({ itemUid, collectionUid, response, requestSen
   const { globalEnvironments = [], activeGlobalEnvironmentUid } = state.globalEnvironments || {};
   const globalEnv = globalEnvironments.find((e) => e.uid === activeGlobalEnvironmentUid);
   const secrets = collectSecretValues(environment, globalEnv);
+  const workspaceId = collection.workspaceBackendId;
 
-  const entry = buildHistoryEntry({ item, collection, environment, response, requestSent, secrets });
+  let responseBodyBlobId = null;
+  const capture = captureResponseBody(response, secrets);
+  if (capture) {
+    try {
+      const blob = await transport.backend.uploadBlob(workspaceId, capture.text, {
+        filename: 'response-body',
+        contentType: capture.contentType
+      });
+      responseBodyBlobId = blob?.id || null;
+    } catch (err) {
+      console.warn('history: could not capture response body', err?.message);
+    }
+  }
+
+  const entry = buildHistoryEntry({ item, collection, environment, response, requestSent, secrets, responseBodyBlobId });
   transport.backend
-    .createHistoryEntry(collection.workspaceBackendId, entry)
+    .createHistoryEntry(workspaceId, entry)
     .catch((err) => console.warn('history: could not record execution', err?.message));
 };
 

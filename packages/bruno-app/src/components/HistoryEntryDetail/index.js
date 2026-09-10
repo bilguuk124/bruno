@@ -7,6 +7,27 @@ const kvBlock = (obj) =>
     .map(([k, v]) => `${k}: ${v}`)
     .join('\n');
 
+const asText = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
+
+const ResponseBody = ({ blobId }) => {
+  const [state, setState] = useState({ status: 'loading' });
+
+  useEffect(() => {
+    let live = true;
+    transport.backend
+      .getBlob(blobId)
+      .then((body) => live && setState({ status: 'ready', body: asText(body) }))
+      .catch(() => live && setState({ status: 'error' }));
+    return () => {
+      live = false;
+    };
+  }, [blobId]);
+
+  if (state.status === 'error') return <div className="muted">Could not load the captured response body.</div>;
+  if (state.status === 'loading') return <div className="muted">Loading body…</div>;
+  return <pre className="body">{state.body}</pre>;
+};
+
 /**
  * The expanded view of one persisted history entry — its redacted request
  * snapshot, the response metadata, and any assertions. Fetches the full entry
@@ -55,6 +76,7 @@ const HistoryEntryDetail = ({ entryId }) => {
           {typeof meta.size === 'number' ? ` · ${meta.size} B` : ''}
         </div>
         {Object.keys(meta.headers || {}).length > 0 && <pre className="kv">{kvBlock(meta.headers)}</pre>}
+        {entry.responseBodyBlobId && <ResponseBody blobId={entry.responseBodyBlobId} />}
       </div>
 
       {Array.isArray(entry.assertions) && entry.assertions.length > 0 && (

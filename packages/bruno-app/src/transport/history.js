@@ -47,6 +47,45 @@ const redactBody = (data, secrets) => {
   }
 };
 
+// Bodies bigger than this aren't captured to a blob — history is a browsing
+// aid, not an archive.
+const MAX_CAPTURED_BODY = 2 * 1024 * 1024;
+const CAPTURABLE_TYPE = /^(text\/|application\/(json|xml|javascript|graphql|x-www-form-urlencoded)|application\/.*\+(json|xml))/i;
+
+/**
+ * The response body to persist alongside a team history entry, redacted and
+ * bounded, or `null` when it shouldn't be captured (binary, empty, or large).
+ * @returns {{ text: string, contentType: string } | null}
+ */
+export const captureResponseBody = (response, secrets = []) => {
+  const contentType = String(
+    response?.headers?.['content-type'] || response?.headers?.['Content-Type'] || ''
+  ).split(';')[0].trim() || 'text/plain';
+  if (!CAPTURABLE_TYPE.test(contentType)) return null;
+
+  let text;
+  if (typeof response?.data === 'string') {
+    text = response.data;
+  } else if (response?.data != null) {
+    try {
+      text = JSON.stringify(response.data);
+    } catch {
+      return null;
+    }
+  } else if (typeof response?.dataBuffer === 'string') {
+    try {
+      text = atob(response.dataBuffer);
+    } catch {
+      return null;
+    }
+  } else {
+    return null;
+  }
+
+  if (!text || text.length > MAX_CAPTURED_BODY) return null;
+  return { text: maskSecrets(text, secrets), contentType };
+};
+
 /** Every secret string value the request could have interpolated. */
 export const collectSecretValues = (...envs) => {
   const out = [];
@@ -66,8 +105,9 @@ export const collectSecretValues = (...envs) => {
  * @param {object} p.response      the send result (status/headers/size/duration)
  * @param {object} [p.requestSent] the prepared request the client actually sent
  * @param {string[]} p.secrets     secret values to mask (from collectSecretValues)
+ * @param {string} [p.responseBodyBlobId] the id of a captured response body
  */
-export const buildHistoryEntry = ({ item, collection, environment, response, requestSent, secrets = [] }) => {
+export const buildHistoryEntry = ({ item, collection, environment, response, requestSent, secrets = [], responseBodyBlobId = null }) => {
   const req = requestSent || {};
   const effective = item.draft?.request || item.request || {};
 
@@ -95,6 +135,7 @@ export const buildHistoryEntry = ({ item, collection, environment, response, req
     clientKind: CLIENT_KIND,
     requestSnapshot: snapshot,
     responseMeta,
+    responseBodyBlobId,
     assertions: item.assertionResults || [],
     tests: item.testResults || []
   };

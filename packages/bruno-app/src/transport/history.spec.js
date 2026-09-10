@@ -1,4 +1,4 @@
-import { buildHistoryEntry, collectSecretValues } from './history';
+import { buildHistoryEntry, collectSecretValues, captureResponseBody } from './history';
 
 const collection = { backendId: 'col-1', workspaceBackendId: 'ws-1' };
 const item = { uid: 'req-1', request: { method: 'GET', url: 'https://api/x' }, assertionResults: [], testResults: [] };
@@ -60,5 +60,45 @@ describe('buildHistoryEntry', () => {
       requestSent: { method: 'POST', url: 'u', headers: {}, data: 'x'.repeat(200_000) }
     });
     expect(entry.requestSnapshot.body).toBe('<omitted: large body>');
+  });
+
+  it('carries a responseBodyBlobId through', () => {
+    const entry = buildHistoryEntry({
+      item,
+      collection,
+      response: { status: 200 },
+      requestSent: { method: 'GET', url: 'u', headers: {}, data: null },
+      responseBodyBlobId: 'blob-9'
+    });
+    expect(entry.responseBodyBlobId).toBe('blob-9');
+  });
+});
+
+describe('captureResponseBody', () => {
+  it('captures a JSON body and masks secrets', () => {
+    const cap = captureResponseBody(
+      { headers: { 'content-type': 'application/json; charset=utf-8' }, data: { token: 'sk-abc', ok: true } },
+      ['sk-abc']
+    );
+    expect(cap.contentType).toBe('application/json');
+    expect(cap.text).toBe('{"token":"••••••","ok":true}');
+  });
+
+  it('captures a text/html string body', () => {
+    const cap = captureResponseBody({ headers: { 'content-type': 'text/html' }, data: '<h1>hi</h1>' }, []);
+    expect(cap).toEqual({ contentType: 'text/html', text: '<h1>hi</h1>' });
+  });
+
+  it('skips a binary content type', () => {
+    expect(captureResponseBody({ headers: { 'content-type': 'image/png' }, data: 'x' }, [])).toBeNull();
+  });
+
+  it('skips a body over the size cap', () => {
+    const big = 'a'.repeat(3 * 1024 * 1024);
+    expect(captureResponseBody({ headers: { 'content-type': 'text/plain' }, data: big }, [])).toBeNull();
+  });
+
+  it('skips an empty response', () => {
+    expect(captureResponseBody({ headers: { 'content-type': 'application/json' }, data: null }, [])).toBeNull();
   });
 });

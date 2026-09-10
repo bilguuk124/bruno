@@ -340,4 +340,43 @@ export default class BackendClient {
   getHistoryEntry(id) {
     return this.get(`/history/${id}`);
   }
+
+  // --- blobs ---
+
+  /**
+   * Upload one file to a workspace's content-addressed blob store. `data` is a
+   * string or ArrayBuffer/Blob; the raw fetch is used because `request()` only
+   * speaks JSON and the multipart boundary must be browser-set.
+   */
+  async uploadBlob(workspaceId, data, { filename = 'blob', contentType } = {}) {
+    const form = new FormData();
+    const part = data instanceof Blob ? data : new Blob([data], contentType ? { type: contentType } : undefined);
+    form.append('file', part, filename);
+
+    const token = getToken();
+    const headers = { 'X-Bruno-Client': CLIENT_KIND };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    let res;
+    try {
+      res = await fetch(apiUrl(`/workspaces/${workspaceId}/blobs`), { method: 'POST', headers, body: form });
+    } catch (err) {
+      throw new BackendError(`Could not reach the backend: ${err.message}`, { status: 0 });
+    }
+    if (res.status === 401) clearSession();
+    const text = await res.text();
+    const parsed = text ? JSON.parse(text) : undefined;
+    if (!res.ok) {
+      throw new BackendError(parsed?.error?.message || `HTTP ${res.status}`, {
+        status: res.status,
+        code: parsed?.error?.code || 'http_error'
+      });
+    }
+    return parsed;
+  }
+
+  /** Fetch a blob's content (parsed as JSON when it is JSON, else the text). */
+  getBlob(blobId) {
+    return this.get(`/blobs/${blobId}`);
+  }
 }
