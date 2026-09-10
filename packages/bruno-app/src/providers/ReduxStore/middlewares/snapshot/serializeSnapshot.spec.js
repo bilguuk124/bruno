@@ -159,6 +159,21 @@ describe('serializeSnapshot workspace tab restoration', () => {
   });
 });
 
+describe('serializeSnapshot activeWorkspaceRef', () => {
+  it('carries the pathname for a local workspace', async () => {
+    const snapshot = await serializeSnapshot(makeState(), { getExistingSnapshot: async () => null });
+    expect(snapshot.activeWorkspaceRef).toBe(WORKSPACE_PATH);
+  });
+
+  it('carries the team: uid for a team workspace', async () => {
+    const state = makeState();
+    state.workspaces.activeWorkspaceUid = 'team:abc';
+    state.workspaces.workspaces = [{ uid: 'team:abc', type: 'team', pathname: null, collections: [] }];
+    const snapshot = await serializeSnapshot(state, { getExistingSnapshot: async () => null });
+    expect(snapshot.activeWorkspaceRef).toBe('team:abc');
+  });
+});
+
 describe('serializeSnapshot collection environment preservation', () => {
   it('creates a safe first-run snapshot when no existing snapshot is available', async () => {
     const snapshot = await serializeSnapshot(makeState(), {

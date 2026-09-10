@@ -14,7 +14,10 @@ jest.mock('transport', () => ({
   default: {
     isRemote: () => true,
     isAuthenticated: () => true,
-    backend: { getFolderChildren: jest.fn().mockResolvedValue({ items: [] }) }
+    backend: {
+      getFolderChildren: jest.fn().mockResolvedValue({ items: [] }),
+      putWorkspaceUiState: jest.fn().mockResolvedValue({})
+    }
   }
 }));
 
@@ -46,6 +49,65 @@ beforeEach(() => {
   mockStop.mockClear();
   mockSetPresence.mockClear();
   SyncSocket.mockClear();
+  transport.backend.putWorkspaceUiState.mockClear();
+});
+
+describe('team workspace ui-state persistence', () => {
+  const uiStore = (syncStatus) =>
+    configureStore({
+      reducer: {
+        workspaces: (state = { workspaces: [{ uid: 'team:abc', type: 'team', backendId: 'abc' }], activeWorkspaceUid: null }, action) =>
+          action.type === setActiveWorkspace.type ? { ...state, activeWorkspaceUid: action.payload } : state,
+        collections: (state = { collections: [{ uid: 'team:c1', origin: 'team', backendId: 'c1', workspaceBackendId: 'abc', activeEnvironmentUid: null, items: [{ uid: 'r1', type: 'http-request' }] }] }) => state,
+        tabs: (state = { tabs: [], activeTabUid: null }, action) => {
+          if (action.type === 'tabs/addTab') return { tabs: [{ uid: action.payload.uid, collectionUid: action.payload.collectionUid, type: 'http-request' }], activeTabUid: action.payload.uid };
+          return state;
+        },
+        backend: (state = { sync: { status: syncStatus } }) => state
+      },
+      middleware: (getDefault) => getDefault().prepend(backendSyncMiddleware.middleware)
+    });
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('debounce-saves the layout after a tab action once the workspace is ready', () => {
+    const store = uiStore('ready');
+    store.dispatch(setActiveWorkspace('team:abc')); // opens the socket
+    store.dispatch({ type: 'tabs/addTab', payload: { uid: 'r1', collectionUid: 'team:c1' } });
+
+    expect(transport.backend.putWorkspaceUiState).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1500);
+    expect(transport.backend.putWorkspaceUiState).toHaveBeenCalledWith(
+      'abc',
+      expect.objectContaining({ version: 1, collections: { c1: { tabs: [{ requestId: 'r1', type: 'http-request', requestPaneTab: null }] } } })
+    );
+  });
+
+  it('does not save while the workspace is still loading', () => {
+    const store = uiStore('loading');
+    store.dispatch(setActiveWorkspace('team:abc'));
+    store.dispatch({ type: 'tabs/addTab', payload: { uid: 'r1', collectionUid: 'team:c1' } });
+    jest.advanceTimersByTime(1500);
+    expect(transport.backend.putWorkspaceUiState).not.toHaveBeenCalled();
+  });
+
+  it('does not save for a local workspace', () => {
+    const store = configureStore({
+      reducer: {
+        workspaces: (state = { workspaces: [{ uid: 'default', type: 'default' }], activeWorkspaceUid: null }, action) =>
+          action.type === setActiveWorkspace.type ? { ...state, activeWorkspaceUid: action.payload } : state,
+        collections: (s = { collections: [] }) => s,
+        tabs: (s = { tabs: [], activeTabUid: null }) => s,
+        backend: (s = { sync: { status: 'ready' } }) => s
+      },
+      middleware: (getDefault) => getDefault().prepend(backendSyncMiddleware.middleware)
+    });
+    store.dispatch(setActiveWorkspace('default'));
+    store.dispatch({ type: 'tabs/addTab', payload: { uid: 'r1', collectionUid: 'x' } });
+    jest.advanceTimersByTime(1500);
+    expect(transport.backend.putWorkspaceUiState).not.toHaveBeenCalled();
+  });
 });
 
 it('claims / releases a presence resource as the active tab changes', () => {

@@ -218,6 +218,12 @@ export const tabsSlice = createSlice({
         state.activeTabUid = uid;
       }
     },
+    // Drop the active-tab pointer without touching the tab list. Used when
+    // switching into a workspace that has no tab to focus, so the pointer
+    // doesn't dangle on the previous workspace's tab.
+    clearActiveTab: (state) => {
+      state.activeTabUid = null;
+    },
     switchTab: (state, action) => {
       if (!state.tabs || !state.tabs.length) {
         state.activeTabUid = null;
@@ -651,6 +657,7 @@ export const {
   clearFocusErrorLine,
   closeTabs,
   closeAllCollectionTabs,
+  clearActiveTab,
   makeTabPermanent,
   clearOpenInEditMode,
   collapseRequestPane,

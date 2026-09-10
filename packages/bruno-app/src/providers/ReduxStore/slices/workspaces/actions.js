@@ -11,6 +11,7 @@ import {
 import { createCollection, openMultipleCollections, openScratchCollectionEvent, mountCollection, hydrateCollectionWithUiStateSnapshot } from '../collections/actions';
 import { removeCollection, addTransientDirectory, updateCollectionMountStatus, expandCollection, sortCollections } from '../collections';
 import { isTeamUid, switchToTeamWorkspace } from '../backend';
+import { isAuthenticated as isBackendAuthenticated } from 'transport/config';
 import { sanitizeName } from 'utils/common/regex';
 import { clearCollectionState } from '../openapi-sync';
 import { updateGlobalEnvironments } from '../global-environments';
@@ -823,6 +824,18 @@ export const loadLastOpenedWorkspaces = () => {
   };
 };
 
+/** Wait (bounded) for a workspace uid to be registered — team workspaces load
+ *  asynchronously via initBackendConnection, which races the workspaces-ready
+ *  event that triggers launch restore. */
+const waitForWorkspace = async (getState, uid, timeoutMs = 5000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (getState().workspaces.workspaces.some((w) => w.uid === uid)) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return getState().workspaces.workspaces.some((w) => w.uid === uid);
+};
+
 export const restoreActiveWorkspaceFromSnapshot = () => {
   return async (dispatch, getState) => {
     startupWorkspaceRestorePending = false;
@@ -830,7 +843,17 @@ export const restoreActiveWorkspaceFromSnapshot = () => {
     try {
       const snapshot = await ipcRenderer.invoke('renderer:snapshot:get');
       const activeWorkspacePath = snapshot?.activeWorkspacePath;
+      const activeWorkspaceRef = snapshot?.activeWorkspaceRef;
       const { workspaces } = getState().workspaces;
+
+      // A team workspace was last active. It has no filesystem path, so it can't
+      // match below — restore it explicitly once it has loaded.
+      if (isTeamUid(activeWorkspaceRef) && isBackendAuthenticated()) {
+        if (await waitForWorkspace(getState, activeWorkspaceRef)) {
+          await dispatch(switchWorkspace(activeWorkspaceRef));
+          return;
+        }
+      }
 
       if (activeWorkspacePath) {
         const normalizedActiveWorkspacePath = normalizePath(activeWorkspacePath);

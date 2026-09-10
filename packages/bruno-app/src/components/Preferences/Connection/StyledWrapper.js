@@ -18,19 +18,6 @@ const StyledWrapper = styled.div`
     max-width: 34rem;
   }
 
-  form.connection-form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    max-width: 28rem;
-
-    label {
-      font-size: 0.8125rem;
-      display: block;
-      margin-bottom: 0.25rem;
-    }
-  }
-
   .status-row {
     display: flex;
     align-items: center;
@@ -62,20 +49,6 @@ const StyledWrapper = styled.div`
   .actions {
     display: flex;
     gap: 0.5rem;
-  }
-
-  .link-button {
-    align-self: flex-start;
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: 0.8125rem;
-    color: ${(props) => props.theme.colors.text.link};
-    cursor: pointer;
-
-    &:hover {
-      text-decoration: underline;
-    }
   }
 `;
 

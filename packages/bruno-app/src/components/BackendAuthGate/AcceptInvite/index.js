@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import Bruno from 'components/Bruno';
 import Button from 'ui/Button';
 import transport from 'transport';
 import { getBaseUrl } from 'transport/config';
 import { acceptInviteAsCurrentUser, acceptInviteAsNewUser } from 'providers/ReduxStore/slices/backend';
-import StyledWrapper from '../StyledWrapper';
 
 const prettyHost = (url) => (url || '').replace(/^https?:\/\//, '');
 
@@ -129,16 +127,11 @@ const AcceptInvite = ({ token, onDone }) => {
   };
 
   return (
-    <StyledWrapper>
-      <div className="signin-card">
-        <div className="signin-brand">
-          <Bruno width={24} />
-          Newton
-        </div>
-        <div className="signin-server">{prettyHost(getBaseUrl())}</div>
-        {body()}
-      </div>
-    </StyledWrapper>
+    <div className="signin-card">
+      <div className="signin-title">You've been invited</div>
+      <div className="signin-server">{prettyHost(getBaseUrl())}</div>
+      {body()}
+    </div>
   );
 };
 

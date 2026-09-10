@@ -1,41 +1,24 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import toast from 'react-hot-toast';
 import Button from 'ui/Button';
-import { connectAndAuthenticate, logoutBackend, disconnectBackend } from 'providers/ReduxStore/slices/backend';
+import { logoutBackend, disconnectBackend, returnToSignIn } from 'providers/ReduxStore/slices/backend';
 import { isBackendUrlLocked } from 'transport/config';
 import ActiveSessions from './ActiveSessions';
 import StyledWrapper from './StyledWrapper';
 
 /**
- * Preferences → Connection. Points the app at a self-hosted Newton backend.
- * With no backend configured the app stays in local (filesystem) mode. When the
- * deployment pins the URL, the field is hidden and only sign in / out is offered.
+ * Preferences → Connection. Shows the current backend session and lets the user
+ * sign out or forget the backend. Connecting and signing in happen at the
+ * launch gate (components/BackendAuthGate), not here — the backend is a
+ * first-class half of the app, not a setting.
  */
 const Connection = () => {
   const dispatch = useDispatch();
   const { status, baseUrl, user, error } = useSelector((state) => state.backend);
   const urlLocked = isBackendUrlLocked();
 
-  const [form, setForm] = useState({ baseUrl: baseUrl || '', email: '', password: '', name: '' });
-  const [register, setRegister] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
   const connected = status === 'connected';
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-
-  const handleConnect = (e) => {
-    e.preventDefault();
-    if ((!urlLocked && !form.baseUrl.trim()) || !form.email.trim() || !form.password) {
-      toast.error(urlLocked ? 'Email and password are required' : 'Backend URL, email and password are all required');
-      return;
-    }
-    setSubmitting(true);
-    dispatch(connectAndAuthenticate({ ...form, register }))
-      .then(() => toast.success(register ? 'Account created — connected' : 'Connected to backend'))
-      .catch((err) => toast.error(err.message || 'Could not connect'))
-      .finally(() => setSubmitting(false));
-  };
 
   const handleLogout = () => {
     dispatch(logoutBackend()).then(() => toast.success('Logged out'));
@@ -43,7 +26,6 @@ const Connection = () => {
 
   const handleDisconnect = () => {
     dispatch(disconnectBackend());
-    setForm({ baseUrl: '', email: '', password: '' });
     toast.success('Back to local mode');
   };
 
@@ -62,7 +44,7 @@ const Connection = () => {
       <p className="description">
         {urlLocked
           ? 'This app is connected to a managed Newton backend. Sign in to sync collections, environments, history and secrets across your team.'
-          : 'Connect to a self-hosted Newton backend to sync collections, environments, history and secrets across your team. Leave this unset to keep working against local files.'}
+          : 'A Newton backend syncs collections, environments, history and secrets across your team. Without one, the app works against local files only.'}
       </p>
 
       <div className="status-row">
@@ -86,74 +68,16 @@ const Connection = () => {
           <ActiveSessions />
         </>
       ) : (
-        <form className="connection-form" onSubmit={handleConnect}>
-          {!urlLocked ? (
-            <div>
-              <label htmlFor="backend-url">Backend URL</label>
-              <input
-                id="backend-url"
-                className="block textbox w-full"
-                placeholder="https://newton.example.com"
-                value={form.baseUrl}
-                onChange={set('baseUrl')}
-                autoComplete="off"
-              />
-            </div>
-          ) : (
-            <div className="status-row">
-              <span>Server: {baseUrl}</span>
-            </div>
-          )}
-          <div>
-            <label htmlFor="backend-email">Email</label>
-            <input
-              id="backend-email"
-              type="email"
-              className="block textbox w-full"
-              value={form.email}
-              onChange={set('email')}
-              autoComplete="username"
-            />
-          </div>
-          {register ? (
-            <div>
-              <label htmlFor="backend-name">Name</label>
-              <input
-                id="backend-name"
-                className="block textbox w-full"
-                value={form.name}
-                onChange={set('name')}
-                autoComplete="name"
-              />
-            </div>
-          ) : null}
-          <div>
-            <label htmlFor="backend-password">Password</label>
-            <input
-              id="backend-password"
-              type="password"
-              className="block textbox w-full"
-              value={form.password}
-              onChange={set('password')}
-              autoComplete="current-password"
-            />
-          </div>
-          <div className="actions">
-            <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? 'Connecting…' : register ? 'Create account & connect' : urlLocked ? 'Sign in' : 'Connect'}
+        <div className="actions">
+          <Button size="sm" onClick={() => dispatch(returnToSignIn())}>
+            {baseUrl ? 'Sign in' : 'Connect to a backend'}
+          </Button>
+          {baseUrl && !urlLocked ? (
+            <Button type="button" color="secondary" variant="outline" size="sm" onClick={handleDisconnect}>
+              Forget backend
             </Button>
-            {baseUrl && !urlLocked ? (
-              <Button type="button" color="secondary" variant="outline" size="sm" onClick={handleDisconnect}>
-                Forget backend
-              </Button>
-            ) : null}
-          </div>
-          {!urlLocked ? (
-            <button type="button" className="link-button" onClick={() => setRegister((v) => !v)}>
-              {register ? 'Have an account? Sign in' : 'First time? Create an account'}
-            </button>
           ) : null}
-        </form>
+        </div>
       )}
     </StyledWrapper>
   );

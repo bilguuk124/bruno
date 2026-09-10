@@ -19,7 +19,8 @@ import {
   refetchTeamCollectionTree,
   loadTeamFolderChildren,
   presenceUpdated,
-  presenceCleared
+  presenceCleared,
+  buildTeamWorkspaceUiState
 } from 'providers/ReduxStore/slices/backend';
 
 /**
@@ -38,6 +39,8 @@ let socketWorkspaceId = null;
 // no-op tab switch doesn't re-send.
 let lastPresenceResource = '';
 const refetchTimers = new Map();
+let uiStateSaveTimer = null;
+const UI_STATE_SAVE_DEBOUNCE_MS = 1200;
 
 const wantsSync = (workspace) =>
   transport.isRemote()
@@ -54,6 +57,27 @@ const closeSocket = () => {
   lastPresenceResource = '';
   for (const t of refetchTimers.values()) clearTimeout(t);
   refetchTimers.clear();
+  clearTimeout(uiStateSaveTimer);
+  uiStateSaveTimer = null;
+};
+
+/**
+ * Debounced persist of the active team workspace's layout to the backend. Silent
+ * while the workspace is still loading (status 'loading') so the restore pass in
+ * switchToTeamWorkspace doesn't immediately save what it just restored.
+ */
+const scheduleUiStateSave = (api) => {
+  const state = api.getState();
+  const workspace = state.workspaces.workspaces.find((w) => w.uid === state.workspaces.activeWorkspaceUid);
+  if (!socket || !wantsSync(workspace) || state.backend?.sync?.status === 'loading') return;
+  const backendId = workspace.backendId;
+
+  clearTimeout(uiStateSaveTimer);
+  uiStateSaveTimer = setTimeout(() => {
+    uiStateSaveTimer = null;
+    const payload = buildTeamWorkspaceUiState(api.getState);
+    if (payload) transport.backend.putWorkspaceUiState(backendId, payload).catch(() => {});
+  }, UI_STATE_SAVE_DEBOUNCE_MS);
 };
 
 const scheduleRefetch = (dispatch, backendCollectionId) => {
@@ -219,6 +243,17 @@ backendSyncMiddleware.startListening({
 backendSyncMiddleware.startListening({
   predicate: (action) => typeof action.type === 'string' && action.type.startsWith('tabs/'),
   effect: (_action, api) => syncPresenceToActiveTab(api.getState())
+});
+
+// Persist the team workspace's layout as the user opens/closes/focuses tabs or
+// changes a collection's environment.
+backendSyncMiddleware.startListening({
+  predicate: (action) =>
+    typeof action.type === 'string'
+    && (action.type.startsWith('tabs/')
+      || action.type === 'collections/selectEnvironment'
+      || action.type === 'collections/expandCollection'),
+  effect: (_action, api) => scheduleUiStateSave(api)
 });
 
 backendSyncMiddleware.startListening({

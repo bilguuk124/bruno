@@ -2,6 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 import transport from 'transport';
 import * as config from 'transport/config';
 import { backendTreeToClientTree, backendChildrenToItems } from 'transport/treeMapping';
+import { findItemInCollection } from 'utils/collections';
 import {
   createWorkspace,
   removeWorkspace,
@@ -13,8 +14,11 @@ import {
   removeCollection,
   updateCollectionMountStatus,
   collectionLoadedFromTree,
-  applyBackendFolderChildren
+  applyBackendFolderChildren,
+  expandCollection,
+  selectEnvironment
 } from 'providers/ReduxStore/slices/collections';
+import { addTab, focusTab, clearActiveTab, closeAllCollectionTabs } from 'providers/ReduxStore/slices/tabs';
 
 /** Run `fn` over `items` at most `limit` at a time. */
 const mapWithConcurrency = async (items, limit, fn) => {
@@ -49,6 +53,10 @@ const initialStatus = () => {
 const initialState = {
   status: initialStatus(), // local | connecting | unauthenticated | connected | error
   baseUrl: config.getBaseUrl(),
+  // The user dismissed the sign-in gate to work against local files. Kept out
+  // of `status` because it's orthogonal — you can acknowledge local mode with a
+  // backend URL still configured but no session.
+  localModeAck: config.isLocalModeAcknowledged(),
   user: null,
   error: null,
   // Backend workspaces the user belongs to: [{ id, name }]. Registered into the
@@ -74,15 +82,20 @@ const slice = createSlice({
       state.user = action.payload;
       state.status = 'connected';
       state.error = null;
+      state.localModeAck = false;
     },
     backendReset: (state) => {
       state.status = config.isBackendConfigured() ? 'unauthenticated' : 'local';
       state.baseUrl = config.getBaseUrl();
+      state.localModeAck = config.isLocalModeAcknowledged();
       state.user = null;
       state.error = null;
       state.teamWorkspaces = [];
       state.sync = { workspaceId: null, status: 'idle' };
       state.presence = {};
+    },
+    localModeAckChanged: (state, action) => {
+      state.localModeAck = action.payload;
     },
     teamWorkspacesLoaded: (state, action) => {
       state.teamWorkspaces = action.payload;
@@ -113,11 +126,24 @@ export const {
   backendStatusChanged,
   backendUserLoaded,
   backendReset,
+  localModeAckChanged,
   teamWorkspacesLoaded,
   backendSyncStatusChanged,
   presenceUpdated,
   presenceCleared
 } = slice.actions;
+
+/** Dismiss the sign-in gate and work against local files. */
+export const continueWithLocalMode = () => (dispatch) => {
+  config.setLocalModeAcknowledged(true);
+  dispatch(localModeAckChanged(true));
+};
+
+/** Bring the sign-in gate back (from the local-mode banner or Preferences). */
+export const returnToSignIn = () => (dispatch) => {
+  config.setLocalModeAcknowledged(false);
+  dispatch(localModeAckChanged(false));
+};
 
 /**
  * On app boot: if a backend URL + token are already stored, call /auth/refresh
@@ -140,6 +166,7 @@ export const initBackendConnection = () => async (dispatch) => {
   try {
     const res = await transport.backend.refresh();
     config.setToken(res.token);
+    config.setLocalModeAcknowledged(false);
     dispatch(backendUserLoaded(res.user));
     dispatch(loadTeamWorkspaces());
   } catch (err) {
@@ -166,6 +193,7 @@ export const connectAndAuthenticate
           ? await transport.backend.register(email, name || email, password)
           : await transport.backend.login(email, password);
         config.setToken(res.token);
+        config.setLocalModeAcknowledged(false);
         let user = res.user;
         if (!user) {
           const me = await transport.backend.me();
@@ -250,6 +278,8 @@ export const logoutBackend = () => async (dispatch, getState) => {
 export const disconnectBackend = () => (dispatch) => {
   dispatch(teardownTeamWorkspaces());
   config.disconnect();
+  // A deliberate disconnect shouldn't throw the sign-in gate back up.
+  config.setLocalModeAcknowledged(true);
   dispatch(backendReset());
 };
 
@@ -297,7 +327,107 @@ export const loadTeamWorkspaces = () => async (dispatch, getState) => {
 };
 
 /**
- * Activate a team workspace: load its collections + trees from the backend.
+ * Snapshot the active team workspace's layout for `PUT /workspaces/:id/ui-state`:
+ * each collection's open request/folder tabs + selected environment, plus the
+ * active tab. Keyed by backend collection id. Returns null when the active
+ * workspace isn't a team one.
+ */
+export const buildTeamWorkspaceUiState = (getState) => {
+  const state = getState();
+  const workspace = state.workspaces.workspaces.find((w) => w.uid === state.workspaces.activeWorkspaceUid);
+  if (workspace?.type !== 'team') return null;
+  const backendId = workspace.backendId;
+
+  const teamCollections = state.collections.collections.filter(
+    (c) => c.origin === 'team' && c.workspaceBackendId === backendId
+  );
+  const byUid = new Map(teamCollections.map((c) => [c.uid, c]));
+
+  const collections = {};
+  for (const c of teamCollections) {
+    const tabs = state.tabs.tabs
+      .filter((t) => t.collectionUid === c.uid && findItemInCollection(c, t.uid))
+      .map((t) => ({ requestId: t.uid, type: t.type, requestPaneTab: t.requestPaneTab || null }));
+    const entry = {};
+    if (tabs.length) entry.tabs = tabs;
+    if (c.activeEnvironmentUid) entry.environmentId = c.activeEnvironmentUid;
+    if (Object.keys(entry).length) collections[c.backendId] = entry;
+  }
+
+  const activeTab = state.tabs.tabs.find((t) => t.uid === state.tabs.activeTabUid);
+  const activeCol = activeTab && byUid.get(activeTab.collectionUid);
+  const activeTabRef = activeCol && findItemInCollection(activeCol, activeTab.uid)
+    ? { collectionId: activeCol.backendId, requestId: activeTab.uid }
+    : null;
+
+  return {
+    version: 1,
+    activeCollectionId: activeCol ? activeCol.backendId : null,
+    activeTab: activeTabRef,
+    collections
+  };
+};
+
+/**
+ * Reopen the tabs / active tab / selected environments recorded in `ui` (the
+ * blob from `GET /workspaces/:id/ui-state`) now that `cols` and their trees are
+ * loaded. Every id is validated against the live tree, so a request or
+ * environment removed on the server since last session is dropped silently.
+ */
+const restoreTeamWorkspaceUiState = (ui, cols) => async (dispatch, getState) => {
+  const perCollection = (ui && ui.collections) || {};
+
+  for (const c of cols) {
+    const saved = perCollection[c.id];
+    if (!saved) continue;
+    const collectionUid = TEAM_PREFIX + c.id;
+    const collection = getState().collections.collections.find((x) => x.uid === collectionUid);
+    if (!collection) continue;
+
+    for (const t of saved.tabs || []) {
+      const item = findItemInCollection(collection, t.requestId);
+      if (!item) continue;
+      dispatch(
+        addTab({
+          uid: t.requestId,
+          collectionUid,
+          type: item.type || t.type,
+          requestPaneTab: t.requestPaneTab || undefined,
+          preview: false
+        })
+      );
+    }
+
+    if (saved.environmentId && (collection.environments || []).some((e) => e.uid === saved.environmentId)) {
+      dispatch(selectEnvironment({ environmentUid: saved.environmentId, collectionUid }));
+      try {
+        const { revealTeamEnvironmentSecrets } = await import('providers/ReduxStore/slices/collections/team');
+        await dispatch(revealTeamEnvironmentSecrets(saved.environmentId, collectionUid));
+      } catch {
+        /* PermView users can't reveal secrets — the selection still restores */
+      }
+    }
+  }
+
+  const activeCollectionId = ui && ui.activeCollectionId;
+  if (activeCollectionId) {
+    dispatch(expandCollection(TEAM_PREFIX + activeCollectionId));
+  }
+
+  const activeRef = ui && ui.activeTab;
+  const activeTabExists = activeRef && getState().tabs.tabs.some((t) => t.uid === activeRef.requestId);
+  if (activeTabExists) {
+    dispatch(focusTab({ uid: activeRef.requestId }));
+  } else {
+    // No remembered tab to focus, and team workspaces have no overview tab — so
+    // clear the pointer rather than leave it on the previous workspace's tab.
+    dispatch(clearActiveTab());
+  }
+};
+
+/**
+ * Activate a team workspace: load its collections + trees from the backend and
+ * restore the user's last layout for it (open tabs, active tab, environments).
  * The realtime WebSocket is opened separately by the backendSync middleware,
  * which reacts to setActiveWorkspace — and only for a team workspace, never a
  * local one.
@@ -316,6 +446,13 @@ export const switchToTeamWorkspace = (workspaceUid) => async (dispatch, getState
     dispatch(backendSyncStatusChanged({ workspaceId: backendId, status: 'error', error: err.message }));
     return;
   }
+
+  const ui = (await transport.backend.getWorkspaceUiState(backendId).catch(() => ({ state: {} }))).state || {};
+  const collectionsWithTabs = new Set(
+    Object.entries(ui.collections || {})
+      .filter(([, v]) => Array.isArray(v.tabs) && v.tabs.length)
+      .map(([id]) => id)
+  );
 
   const wsCollections = [];
   for (const c of cols) {
@@ -342,9 +479,13 @@ export const switchToTeamWorkspace = (workspaceUid) => async (dispatch, getState
   dispatch(updateWorkspace({ uid: workspaceUid, collections: wsCollections }));
 
   // The collection list already renders; stream the trees in with a bounded
-  // fan-out so a big workspace doesn't fire one request per collection at once.
-  // Shallow (root only) — folders load their children when first expanded.
-  await mapWithConcurrency(cols, 5, (c) => dispatch(refetchTeamCollectionTree(c.id, { shallow: true })));
+  // fan-out. A collection with remembered tabs is pulled in full so those tabs
+  // can be rebuilt; the rest stay shallow (folders load on first expand).
+  await mapWithConcurrency(cols, 5, (c) =>
+    dispatch(refetchTeamCollectionTree(c.id, { shallow: !collectionsWithTabs.has(c.id) }))
+  );
+
+  await dispatch(restoreTeamWorkspaceUiState(ui, cols));
 
   dispatch(backendSyncStatusChanged({ workspaceId: backendId, status: 'ready' }));
 };
@@ -440,7 +581,10 @@ export const acceptInviteAsNewUser
 export const teardownTeamWorkspaces = () => (dispatch, getState) => {
   const state = getState();
   for (const c of state.collections.collections) {
-    if (isTeamUid(c.uid)) dispatch(removeCollection({ collectionUid: c.uid }));
+    if (isTeamUid(c.uid)) {
+      dispatch(closeAllCollectionTabs({ collectionUid: c.uid }));
+      dispatch(removeCollection({ collectionUid: c.uid }));
+    }
   }
   for (const w of state.workspaces.workspaces) {
     if (isTeamUid(w.uid)) dispatch(removeWorkspace(w.uid));

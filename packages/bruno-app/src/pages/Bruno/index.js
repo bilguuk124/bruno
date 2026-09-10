@@ -10,11 +10,13 @@ import Sidebar from 'components/Sidebar';
 import OpenCollection from 'components/Sidebar/OpenCollection';
 import StatusBar from 'components/StatusBar';
 import AppTitleBar from 'components/AppTitleBar';
+import LocalModeBanner, { LOCAL_MODE_BANNER_HEIGHT } from 'components/LocalModeBanner';
 import ApiSpecPanel from 'components/ApiSpecPanel';
 import TabPanelErrorBoundary from 'components/RequestTabPanel/TabPanelErrorBoundary';
 // import ErrorCapture from 'components/ErrorCapture';
 import { useSelector } from 'react-redux';
 import { isElectron } from 'utils/common/platform';
+import { isBackendOnly } from 'transport/config';
 import StyledWrapper from './StyledWrapper';
 import 'swagger-ui-react/swagger-ui.css';
 import Devtools from 'components/Devtools';
@@ -68,6 +70,10 @@ export default function Main() {
   const mainSectionRef = useRef(null);
   const [showRosettaBanner, setShowRosettaBanner] = useState(false);
 
+  const backendStatus = useSelector((state) => state.backend.status);
+  const localModeBannerVisible
+    = backendStatus !== 'connected' && backendStatus !== 'connecting' && !isBackendOnly();
+
   // Initialize event listeners
   useGrpcEventListeners();
   useWsEventListeners();
@@ -99,6 +105,7 @@ export default function Main() {
     // <ErrorCapture>
     <div id="main-container" className="flex flex-col h-screen max-h-screen overflow-hidden">
       <AppTitleBar />
+      <LocalModeBanner />
       {showRosettaBanner ? (
         <Portal>
           <div className="fixed bottom-0 left-0 right-0 z-10 bg-amber-100 border border-amber-400 text-amber-700 px-4 py-3" role="alert">
@@ -117,7 +124,9 @@ export default function Main() {
         className="flex-1 min-h-0 flex"
         data-app-state="loading"
         style={{
-          height: isConsoleOpen ? `calc(100vh - 60px - ${isConsoleOpen ? '300px' : '0px'})` : 'calc(100vh - 60px)'
+          // 60px = title bar + status bar; the local-mode banner, when shown,
+          // sits between them and takes its own strip.
+          height: `calc(100vh - 60px${localModeBannerVisible ? ` - ${LOCAL_MODE_BANNER_HEIGHT}px` : ''}${isConsoleOpen ? ' - 300px' : ''})`
         }}
       >
         <StyledWrapper className={className} style={{ height: '100%', zIndex: 1 }}>

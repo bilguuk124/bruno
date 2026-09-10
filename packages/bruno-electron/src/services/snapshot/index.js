@@ -116,6 +116,9 @@ const sidebarSchema = yup.object({
 const snapshotSchema = yup.object({
   version: yup.string().defined(),
   activeWorkspacePath: yup.string().nullable(),
+  // Which workspace to reopen on launch. A team (backend) workspace has no
+  // filesystem path, so its `team:<id>` uid is carried here instead.
+  activeWorkspaceRef: yup.string().nullable(),
   extras: yup.object({
     devTools: devToolsSchema.required(),
     sidebar: sidebarSchema.optional()
@@ -127,6 +130,7 @@ const snapshotSchema = yup.object({
 const emptySnapshot = {
   version: SNAPSHOT_VERSION,
   activeWorkspacePath: null,
+  activeWorkspaceRef: null,
   extras: {
     devTools: {
       open: false
@@ -224,6 +228,7 @@ class SnapshotManager {
 
   resetSnapshot() {
     this.store.delete('activeWorkspacePath');
+    this.store.delete('activeWorkspaceRef');
     this.store.set('workspaces', (this.store.store?.workspaces ?? []).map((d) => {
       d.lastActiveCollectionPathname = undefined;
       d.activeWorkspaceTabType = undefined;
@@ -433,6 +438,7 @@ class SnapshotManager {
     return {
       version: snapshot.version ?? SNAPSHOT_VERSION,
       activeWorkspacePath: typeof snapshot.activeWorkspacePath === 'string' ? snapshot.activeWorkspacePath : null,
+      activeWorkspaceRef: typeof snapshot.activeWorkspaceRef === 'string' ? snapshot.activeWorkspaceRef : null,
       extras,
       workspaces: this._normalizeWorkspaceList(snapshot.workspaces),
       collections: this._normalizeCollectionList(snapshot.collections, snapshot.tabs)

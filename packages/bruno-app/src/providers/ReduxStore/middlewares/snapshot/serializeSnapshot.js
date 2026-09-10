@@ -109,6 +109,11 @@ export const serializeSnapshot = async (state, options = {}) => {
 
   const snapshot = {
     activeWorkspacePath: activeWorkspace?.pathname || null,
+    // Which workspace to reopen on launch. A team workspace has no path, so its
+    // `team:<id>` uid is carried here; local workspaces keep their pathname.
+    activeWorkspaceRef: activeWorkspace?.type === 'team'
+      ? activeWorkspace.uid
+      : (activeWorkspace?.pathname || null),
     extras: {
       devTools: {
         open: logs.isConsoleOpen,

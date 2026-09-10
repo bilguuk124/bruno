@@ -1,5 +1,5 @@
 import BackendError from './BackendError';
-import { apiUrl, getToken, clearSession } from './config';
+import { apiUrl, apiUrlFor, getToken, clearSession } from './config';
 
 // So the backend records `client_kind` on the session (shown in the "active
 // sessions" list). The Electron preload bridge is the reliable desktop signal.
@@ -100,8 +100,20 @@ export default class BackendClient {
     return this.post('/auth/logout');
   }
 
-  authProviders() {
-    return this.get('/auth/providers');
+  // `baseOverride` lets the sign-in screen probe a URL that isn't the committed
+  // one yet. This endpoint is public, so it needs no session.
+  async authProviders(baseOverride) {
+    const url = baseOverride ? apiUrlFor(baseOverride, '/auth/providers') : apiUrl('/auth/providers');
+    let res;
+    try {
+      res = await fetch(url, { headers: { 'X-Bruno-Client': CLIENT_KIND } });
+    } catch (err) {
+      throw new BackendError(`Could not reach the backend: ${err.message}`, { status: 0 });
+    }
+    if (!res.ok) {
+      throw new BackendError(`HTTP ${res.status}`, { status: res.status });
+    }
+    return res.json();
   }
 
   me() {
@@ -140,6 +152,16 @@ export default class BackendClient {
 
   getWorkspaceChanges(id, since) {
     return this.get(`/workspaces/${id}/changes?since=${since || 0}`);
+  }
+
+  // The caller's opaque layout blob for a workspace (open tabs, active tab,
+  // selected environments) so a team workspace reopens where it was left.
+  getWorkspaceUiState(workspaceId) {
+    return this.get(`/workspaces/${workspaceId}/ui-state`);
+  }
+
+  putWorkspaceUiState(workspaceId, state) {
+    return this.put(`/workspaces/${workspaceId}/ui-state`, { state });
   }
 
   // --- workspace members & invites ---

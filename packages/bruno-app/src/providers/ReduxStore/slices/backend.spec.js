@@ -5,12 +5,24 @@ jest.mock('transport/config', () => ({
   isBackendConfigured: () => true,
   isAuthenticated: () => false,
   getBaseUrl: () => 'https://newton.example.com',
+  isLocalModeAcknowledged: jest.fn(() => false),
+  setLocalModeAcknowledged: jest.fn(),
   setToken: jest.fn()
 }));
 jest.mock('transport', () => ({ __esModule: true, default: { backend: {} } }));
 
 import * as config from 'transport/config';
-import reducer, { adoptSsoRedirect, backendStatusChanged, presenceUpdated, presenceCleared, backendReset } from './backend';
+import reducer, {
+  adoptSsoRedirect,
+  backendStatusChanged,
+  presenceUpdated,
+  presenceCleared,
+  backendReset,
+  localModeAckChanged,
+  continueWithLocalMode,
+  returnToSignIn,
+  buildTeamWorkspaceUiState
+} from './backend';
 
 const setToken = config.setToken;
 
@@ -72,6 +84,31 @@ it('a later plain unauthenticated status keeps the sso error', () => {
   expect(store.getState().backend.error).toMatch(/expired/i);
 });
 
+describe('local mode acknowledgement', () => {
+  it('continueWithLocalMode persists the ack and flips the flag', () => {
+    const store = makeStore();
+    store.dispatch(continueWithLocalMode());
+    expect(config.setLocalModeAcknowledged).toHaveBeenCalledWith(true);
+    expect(store.getState().backend.localModeAck).toBe(true);
+  });
+
+  it('returnToSignIn clears the ack so the gate comes back', () => {
+    const store = makeStore();
+    store.dispatch(continueWithLocalMode());
+    store.dispatch(returnToSignIn());
+    expect(config.setLocalModeAcknowledged).toHaveBeenLastCalledWith(false);
+    expect(store.getState().backend.localModeAck).toBe(false);
+  });
+
+  it('backendReset re-reads the persisted ack', () => {
+    config.isLocalModeAcknowledged.mockReturnValueOnce(true);
+    const store = makeStore();
+    store.dispatch(localModeAckChanged(false));
+    store.dispatch(backendReset());
+    expect(store.getState().backend.localModeAck).toBe(true);
+  });
+});
+
 describe('presence', () => {
   it('presenceUpdated stores a roster and drops it when empty', () => {
     const store = makeStore();
@@ -92,5 +129,63 @@ describe('presence', () => {
     store.dispatch(presenceUpdated({ resource: 'request:r2', users: [{ userId: 'b', name: 'B' }] }));
     store.dispatch(backendReset());
     expect(store.getState().backend.presence).toEqual({});
+  });
+});
+
+describe('buildTeamWorkspaceUiState', () => {
+  const getState = () => ({
+    workspaces: {
+      activeWorkspaceUid: 'team:ws1',
+      workspaces: [{ uid: 'team:ws1', type: 'team', backendId: 'ws1' }]
+    },
+    collections: {
+      collections: [
+        {
+          uid: 'team:c1',
+          origin: 'team',
+          backendId: 'c1',
+          workspaceBackendId: 'ws1',
+          activeEnvironmentUid: 'env1',
+          items: [{ uid: 'r1', type: 'http-request' }, { uid: 'f1', type: 'folder', items: [{ uid: 'r2', type: 'http-request' }] }]
+        },
+        // a collection from a different workspace — must be ignored
+        { uid: 'team:c9', origin: 'team', backendId: 'c9', workspaceBackendId: 'other', items: [{ uid: 'r9', type: 'http-request' }] }
+      ]
+    },
+    tabs: {
+      activeTabUid: 'r2',
+      tabs: [
+        { uid: 'r1', collectionUid: 'team:c1', type: 'http-request', requestPaneTab: 'headers' },
+        { uid: 'r2', collectionUid: 'team:c1', type: 'http-request', requestPaneTab: 'body' },
+        { uid: 'ghost', collectionUid: 'team:c1', type: 'http-request' }, // no matching item — dropped
+        { uid: 'r9', collectionUid: 'team:c9', type: 'http-request' } // other workspace — dropped
+      ]
+    }
+  });
+
+  it('captures tabs, active tab and environment for the active team workspace only', () => {
+    expect(buildTeamWorkspaceUiState(getState)).toEqual({
+      version: 1,
+      activeCollectionId: 'c1',
+      activeTab: { collectionId: 'c1', requestId: 'r2' },
+      collections: {
+        c1: {
+          environmentId: 'env1',
+          tabs: [
+            { requestId: 'r1', type: 'http-request', requestPaneTab: 'headers' },
+            { requestId: 'r2', type: 'http-request', requestPaneTab: 'body' }
+          ]
+        }
+      }
+    });
+  });
+
+  it('returns null when the active workspace is not a team workspace', () => {
+    const local = () => ({
+      workspaces: { activeWorkspaceUid: 'default', workspaces: [{ uid: 'default', type: 'default' }] },
+      collections: { collections: [] },
+      tabs: { tabs: [], activeTabUid: null }
+    });
+    expect(buildTeamWorkspaceUiState(local)).toBeNull();
   });
 });

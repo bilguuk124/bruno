@@ -113,6 +113,29 @@ describe('SnapshotManager.remapCollectionTabPaths', () => {
     expect(tabs.some((t) => t.pathname === `${collectionPath}/ping.bru`)).toBe(true);
   });
 
+  it('persists and returns activeWorkspaceRef (a team: uid or a path)', () => {
+    snapshotManager.saveSnapshot({
+      version: '0.0.1',
+      activeWorkspacePath: null,
+      activeWorkspaceRef: 'team:abc-123',
+      extras: { devTools: { open: false, activeTab: '', tabs: {} } },
+      workspaces: [],
+      collections: []
+    });
+    expect(snapshotManager.getSnapshot().activeWorkspaceRef).toBe('team:abc-123');
+  });
+
+  it('defaults activeWorkspaceRef to null when absent', () => {
+    snapshotManager.saveSnapshot({
+      version: '0.0.1',
+      activeWorkspacePath: null,
+      extras: { devTools: { open: false, activeTab: '', tabs: {} } },
+      workspaces: [],
+      collections: []
+    });
+    expect(snapshotManager.getSnapshot().activeWorkspaceRef).toBeNull();
+  });
+
   it('remaps .bru tabs across every workspace entry for a shared collection', () => {
     const workspaceAPath = '/workspaces/a';
     const workspaceBPath = '/workspaces/b';

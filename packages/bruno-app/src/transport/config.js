@@ -20,6 +20,10 @@
 
 const URL_KEY = 'newton.backend.url';
 const TOKEN_KEY = 'newton.backend.token';
+// Set once the user dismisses the sign-in gate to work against local files.
+// Its only job is to stop the gate reappearing on every launch; the local-mode
+// warning stays visible regardless.
+const LOCAL_ACK_KEY = 'newton.backend.localAck';
 
 const listeners = new Set();
 
@@ -82,6 +86,9 @@ export const getBaseUrl = () => {
 };
 export const getToken = () => read(TOKEN_KEY);
 
+/** True when the user has chosen to skip sign-in and work against local files. */
+export const isLocalModeAcknowledged = () => read(LOCAL_ACK_KEY) === '1';
+
 /** True once a backend URL is known — pinned or user-entered. */
 export const isBackendConfigured = () => Boolean(getBaseUrl());
 
@@ -116,6 +123,11 @@ export const setToken = (token) => {
   notify();
 };
 
+export const setLocalModeAcknowledged = (ack) => {
+  write(LOCAL_ACK_KEY, ack ? '1' : '');
+  notify();
+};
+
 /** Clears the token but keeps the configured URL (a plain logout). */
 export const clearSession = () => {
   write(TOKEN_KEY, '');
@@ -141,9 +153,16 @@ export const onChange = (fn) => {
   return () => listeners.delete(fn);
 };
 
-/** Builds an absolute API URL from a path like `/workspaces`. */
-export const apiUrl = (path) => {
-  const base = getBaseUrl();
+/**
+ * Builds an absolute API URL from a path like `/workspaces` against an explicit
+ * base — for probing a backend the user has typed but not yet committed (the
+ * sign-in screen's SSO check).
+ */
+export const apiUrlFor = (base, path) => {
+  const normalized = normalizeBaseUrl(base) || getBaseUrl();
   const suffix = path.startsWith('/') ? path : `/${path}`;
-  return `${base}/api/v1${suffix}`;
+  return `${normalized}/api/v1${suffix}`;
 };
+
+/** Builds an absolute API URL from a path like `/workspaces`. */
+export const apiUrl = (path) => apiUrlFor(getBaseUrl(), path);

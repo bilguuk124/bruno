@@ -4,10 +4,27 @@ const StyledWrapper = styled.div`
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   background: ${(props) => props.theme.bg};
   color: ${(props) => props.theme.text};
+
+  .gate-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 1.5rem;
+  }
+
+  /* The sign-in screen owns the whole area with its own two-pane layout. */
+  .gate-body--bleed {
+    align-items: stretch;
+    justify-content: stretch;
+    overflow: hidden;
+    padding: 0;
+  }
 
   .gate-loading {
     font-size: 0.875rem;
@@ -22,18 +39,10 @@ const StyledWrapper = styled.div`
     gap: 0.75rem;
   }
 
-  .signin-brand {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  .signin-title {
     margin-bottom: 0.5rem;
     font-size: 1.125rem;
     font-weight: 600;
-  }
-
-  .signin-brand svg {
-    width: 1.5rem;
-    height: 1.5rem;
   }
 
   .signin-server {
@@ -68,13 +77,6 @@ const StyledWrapper = styled.div`
 
   .invite-form > div {
     margin-bottom: 0.75rem;
-  }
-
-  .signin-divider {
-    font-size: 0.75rem;
-    text-align: center;
-    margin: 0.25rem 0;
-    color: ${(props) => props.theme.colors?.text?.muted || props.theme.text};
   }
 
   .signin-actions {
