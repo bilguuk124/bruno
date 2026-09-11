@@ -92,3 +92,22 @@ it('stop() clears the heartbeat', () => {
   jest.advanceTimersByTime(60_000);
   expect(FakeWS.instances.reduce((n, w) => n + w.sent.length, 0)).toBe(before);
 });
+
+it('routes the workspace roster frame to onTeamPresence', () => {
+  const onTeamPresence = jest.fn();
+  const onPresence = jest.fn();
+  const { ws } = connect({ onTeamPresence, onPresence });
+
+  ws().emit({ type: 'presence.workspace', team: [{ userId: 'u1', name: 'Ada', viewing: 'request:r1' }] });
+  expect(onTeamPresence).toHaveBeenCalledWith([{ userId: 'u1', name: 'Ada', viewing: 'request:r1' }]);
+  expect(onPresence).not.toHaveBeenCalled();
+
+  // A roster with nobody on it omits `team` entirely.
+  ws().emit({ type: 'presence.workspace' });
+  expect(onTeamPresence).toHaveBeenLastCalledWith([]);
+
+  // Per-resource presence still goes to its own callback, not this one.
+  ws().emit({ type: 'presence', resource: 'request:r1', users: [{ userId: 'u1', name: 'Ada' }] });
+  expect(onPresence).toHaveBeenCalledTimes(1);
+  expect(onTeamPresence).toHaveBeenCalledTimes(2);
+});

@@ -66,7 +66,15 @@ const initialState = {
   // Realtime sync state for the currently-active team workspace.
   sync: { workspaceId: null, status: 'idle' }, // idle | loading | ready | error | ws:connecting | ws:connected | ws:reconnecting | ws:disconnected
   // Who is viewing what in the active team workspace: { [resource]: [{ userId, name }] }.
-  presence: {}
+  presence: {},
+  // Everyone with a socket open on the active team workspace, from the server's
+  // `presence.workspace` frame: [{ userId, name, viewing }]. This is liveness
+  // only -- the team's membership comes from the members API, which includes
+  // people who are offline.
+  teamPresence: [],
+  // Resolved labels for the resources teammates are viewing, so "viewing
+  // request:9f1c..." can read as a request name. Keyed by request id.
+  resourceLabels: {}
 };
 
 const slice = createSlice({
@@ -94,6 +102,8 @@ const slice = createSlice({
       state.teamWorkspaces = [];
       state.sync = { workspaceId: null, status: 'idle' };
       state.presence = {};
+      state.teamPresence = [];
+      state.resourceLabels = {};
     },
     localModeAckChanged: (state, action) => {
       state.localModeAck = action.payload;
@@ -119,6 +129,16 @@ const slice = createSlice({
     },
     presenceCleared: (state) => {
       state.presence = {};
+      state.teamPresence = [];
+    },
+    teamPresenceUpdated: (state, action) => {
+      state.teamPresence = action.payload || [];
+    },
+    resourceLabelResolved: (state, action) => {
+      const { requestId, label } = action.payload;
+      // A null label is cached too: it means the lookup failed (deleted, or no
+      // access) and stops us retrying it on every roster frame.
+      state.resourceLabels[requestId] = label;
     }
   }
 });
@@ -131,7 +151,9 @@ export const {
   teamWorkspacesLoaded,
   backendSyncStatusChanged,
   presenceUpdated,
-  presenceCleared
+  presenceCleared,
+  teamPresenceUpdated,
+  resourceLabelResolved
 } = slice.actions;
 
 /** Dismiss the sign-in gate and work against local files. */
@@ -571,6 +593,68 @@ export const revealTeamItem = ({ collectionUid, itemUid, path = [] }) => async (
   }
 
   return itemUid ? findItemInCollection(collectionNow(), itemUid) : undefined;
+};
+
+// Request-location lookups already in flight, so a burst of roster frames for
+// the same request doesn't fan out into a burst of identical fetches.
+const resolvingResources = new Set();
+
+/**
+ * Turn the bare `request:<id>` a presence frame carries into something a person
+ * can read — and into the collection + folder chain needed to jump there.
+ *
+ * The request may live in a part of the tree this client never loaded, so the
+ * loaded tree isn't enough; `GET /requests/:id/location` answers for any request
+ * the caller can view. Results are cached in the slice, failures included.
+ */
+export const resolveResourceLabel = (requestId) => async (dispatch, getState) => {
+  if (!requestId) return;
+  if (requestId in getState().backend.resourceLabels) return;
+  if (resolvingResources.has(requestId)) return;
+
+  resolvingResources.add(requestId);
+  try {
+    const loc = await transport.backend.getRequestLocation(requestId);
+    dispatch(
+      resourceLabelResolved({
+        requestId,
+        label: {
+          name: loc.name,
+          method: loc.method || '',
+          collectionId: loc.collectionId,
+          collectionName: loc.collectionName,
+          path: loc.path || []
+        }
+      })
+    );
+  } catch {
+    // Deleted, or the viewer can't see it. Cache the miss so the roster doesn't
+    // re-ask on every frame.
+    dispatch(resourceLabelResolved({ requestId, label: null }));
+  } finally {
+    resolvingResources.delete(requestId);
+  }
+};
+
+/**
+ * Open the request a teammate is on — the team panel's "go to where they are".
+ * Reuses the same reveal walk a search hit uses, since a resolved location
+ * carries the same root-first ancestor path.
+ */
+export const openTeamResource = (requestId) => async (dispatch, getState) => {
+  await dispatch(resolveResourceLabel(requestId));
+  const label = getState().backend.resourceLabels[requestId];
+  if (!label) return;
+
+  const collectionUid = TEAM_PREFIX + label.collectionId;
+  const item = await dispatch(revealTeamItem({ collectionUid, itemUid: requestId, path: label.path }));
+  if (!item) return;
+
+  if (getState().tabs.tabs.some((t) => t.uid === requestId)) {
+    dispatch(focusTab({ uid: requestId }));
+    return;
+  }
+  dispatch(addTab({ uid: requestId, collectionUid, type: item.type }));
 };
 
 /**

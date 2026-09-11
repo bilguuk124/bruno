@@ -18,11 +18,12 @@ import { getBaseUrl, getToken } from './config';
 const PRESENCE_HEARTBEAT_MS = 15_000;
 
 export default class SyncSocket {
-  constructor({ workspaceId, onEvent, onStatus, onPresence }) {
+  constructor({ workspaceId, onEvent, onStatus, onPresence, onTeamPresence }) {
     this.workspaceId = workspaceId;
     this.onEvent = onEvent || (() => {});
     this.onStatus = onStatus || (() => {});
     this.onPresence = onPresence || (() => {});
+    this.onTeamPresence = onTeamPresence || (() => {});
     this.cursor = null;
     this.stopped = false;
     this.retry = 0;
@@ -133,6 +134,14 @@ export default class SyncSocket {
 
     if (frame.type === 'presence') {
       this.onPresence({ resource: frame.resource, users: frame.users || [] });
+      return;
+    }
+
+    // Who is in the workspace at all, and what each of them is looking at. The
+    // server sends it unprompted on connect and on every join, leave or focus
+    // change, so the team panel never polls.
+    if (frame.type === 'presence.workspace') {
+      this.onTeamPresence(frame.team || []);
     }
   }
 

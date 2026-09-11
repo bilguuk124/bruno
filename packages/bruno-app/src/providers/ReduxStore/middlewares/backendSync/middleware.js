@@ -3,6 +3,7 @@ import transport from 'transport';
 import SyncSocket from 'transport/sync';
 import { changePatchToItem } from 'transport/treeMapping';
 import { findCollectionByUid, findItemInCollection, findParentItemInCollection } from 'utils/collections';
+import { requestIdFromResource } from 'utils/team';
 import { setActiveWorkspace } from 'providers/ReduxStore/slices/workspaces';
 import {
   removeCollection,
@@ -20,6 +21,8 @@ import {
   loadTeamFolderChildren,
   presenceUpdated,
   presenceCleared,
+  teamPresenceUpdated,
+  resolveResourceLabel,
   buildTeamWorkspaceUiState
 } from 'providers/ReduxStore/slices/backend';
 
@@ -232,6 +235,16 @@ backendSyncMiddleware.startListening({
       workspaceId: backendId,
       onEvent: (ev) => applyChangeEvent(api, ev),
       onPresence: (p) => api.dispatch(presenceUpdated(p)),
+      onTeamPresence: (team) => {
+        api.dispatch(teamPresenceUpdated(team));
+        // Resolve the names behind the resource ids so the panel can say
+        // "List orders" rather than "request:9f1c…". Cached, so a roster that
+        // re-broadcasts on every join costs nothing after the first time.
+        for (const member of team) {
+          const requestId = requestIdFromResource(member.viewing);
+          if (requestId) api.dispatch(resolveResourceLabel(requestId));
+        }
+      },
       onStatus: (status) =>
         api.dispatch(backendSyncStatusChanged({ workspaceId: backendId, status: `ws:${status}` }))
     });

@@ -267,6 +267,12 @@ export default class BackendClient {
 
   // --- version history (collections / folders / requests) ---
 
+  /** Where a request sits in the tree: collection + root-first folder chain.
+   *  Same shape a search hit carries, so one navigation path serves both. */
+  getRequestLocation(requestId) {
+    return this.get(`/requests/${requestId}/location`);
+  }
+
   getRequestHistory(requestId, { limit } = {}) {
     return this.get(`/requests/${requestId}/history${limit ? `?limit=${limit}` : ''}`);
   }
