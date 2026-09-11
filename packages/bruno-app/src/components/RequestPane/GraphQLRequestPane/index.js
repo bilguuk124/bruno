@@ -18,6 +18,7 @@ import Assertions from 'components/RequestPane/Assertions';
 import Script from 'components/RequestPane/Script';
 import Tests from 'components/RequestPane/Tests';
 import Documentation from 'components/Documentation/index';
+import RequestVersions from 'components/RequestPane/RequestVersions';
 import DocsAction from 'components/Documentation/DocsAction';
 import Settings from 'components/RequestPane/Settings';
 import { useTheme } from 'providers/Theme';
@@ -42,6 +43,7 @@ const TAB_CONFIG = [
   { key: 'assert', label: 'Assert' },
   { key: 'tests', label: 'Tests' },
   { key: 'docs', label: 'Docs' },
+  { key: 'versions', label: 'Versions' },
   { key: 'settings', label: 'Settings' }
 ];
 
@@ -182,13 +184,17 @@ const GraphQLRequestPane = ({ item, collection, onSchemaLoad, toggleDocs, handle
     [item, itemAuthMode, collection]
   );
 
+  // Versions only exist for a team collection — a filesystem one has no
+  // backend change feed to read them from.
+  const versionsEnabled = collection?.origin === 'team';
+
   const allTabs = useMemo(
-    () => TAB_CONFIG.map(({ key, label }) => ({
+    () => TAB_CONFIG.filter(({ key }) => key !== 'versions' || versionsEnabled).map(({ key, label }) => ({
       key,
       label,
       indicator: key === 'auth' && hasAuth ? <StatusDot dataTestId="auth" /> : null
     })),
-    [hasAuth]
+    [hasAuth, versionsEnabled]
   );
 
   const handlePrettify = useCallback(() => {
@@ -277,6 +283,8 @@ const GraphQLRequestPane = ({ item, collection, onSchemaLoad, toggleDocs, handle
         return <Tests item={item} collection={collection} />;
       case 'docs':
         return <Documentation item={item} collection={collection} />;
+      case 'versions':
+        return <RequestVersions item={item} />;
       case 'settings':
         return <Settings item={item} collection={collection} />;
       default:

@@ -1,5 +1,6 @@
 import React, { useMemo, useCallback, useRef } from 'react';
 import Documentation from 'components/Documentation/index';
+import RequestVersions from 'components/RequestPane/RequestVersions';
 import DocsAction from 'components/Documentation/DocsAction';
 import RequestHeaders from 'components/RequestPane/RequestHeaders';
 import StatusDot from 'components/StatusDot/index';
@@ -139,9 +140,12 @@ const WSRequestPane = ({ item, collection, handleRun }) => {
         key: 'docs',
         label: 'Docs',
         indicator: docs && docs.length > 0 ? <StatusDot type="default" /> : null
-      }
+      },
+      // Versions only exist for a team collection — a filesystem one has no
+      // backend change feed to read them from.
+      ...(collection?.origin === 'team' ? [{ key: 'versions', label: 'Versions', indicator: null }] : [])
     ];
-  }, [activeHeadersLength, hasAuth, docs]);
+  }, [activeHeadersLength, hasAuth, docs, collection?.origin]);
 
   const tabPanel = useMemo(() => {
     switch (requestPaneTab) {
@@ -166,6 +170,9 @@ const WSRequestPane = ({ item, collection, handleRun }) => {
       }
       case 'docs': {
         return <Documentation item={item} collection={collection} />;
+      }
+      case 'versions': {
+        return <RequestVersions item={item} />;
       }
       default: {
         return <div className="mt-4">404 | Not found</div>;

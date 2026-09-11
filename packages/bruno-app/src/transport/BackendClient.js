@@ -273,6 +273,22 @@ export default class BackendClient {
     return this.get(`/requests/${requestId}/location`);
   }
 
+  getFolderHistory(folderId, { limit } = {}) {
+    return this.get(`/folders/${folderId}/history${limit ? `?limit=${limit}` : ''}`);
+  }
+
+  restoreFolderVersion(folderId, seq, revision) {
+    return this.post(`/folders/${folderId}/restore`, { seq }, { ifMatch: revision });
+  }
+
+  getCollectionHistory(collectionId, { limit } = {}) {
+    return this.get(`/collections/${collectionId}/history${limit ? `?limit=${limit}` : ''}`);
+  }
+
+  restoreCollectionVersion(collectionId, seq, revision) {
+    return this.post(`/collections/${collectionId}/restore`, { seq }, { ifMatch: revision });
+  }
+
   getRequestHistory(requestId, { limit } = {}) {
     return this.get(`/requests/${requestId}/history${limit ? `?limit=${limit}` : ''}`);
   }

@@ -119,6 +119,12 @@ const parentIdOf = (collection, itemUid) => {
  * - An `update`/`create` we can't place (missing parent, unknown item) falls
  *   back to a debounced full-tree refetch.
  */
+/** The loaded team collection that owns `environmentId`, if any. */
+const collectionHoldingEnvironment = (state, environmentId) =>
+  state.collections.collections.find(
+    (c) => c.origin === 'team' && (c.environments || []).some((e) => e.uid === environmentId)
+  );
+
 const applyChangeEvent = (api, ev) => {
   const backendCollectionId = ev.entityType === 'collection' ? ev.entityId : ev.patch && ev.patch.collectionId;
   const collectionUid = backendCollectionId ? TEAM_PREFIX + backendCollectionId : null;
@@ -139,10 +145,19 @@ const applyChangeEvent = (api, ev) => {
   }
 
   if (ENVIRONMENT_ENTITIES.has(ev.entityType)) {
-    // An `environment` patch carries its scope; a variable patch doesn't, so
-    // refetch every loaded team collection in the workspace for that case.
+    // An `environment` patch carries its scope directly.
     if (ev.entityType === 'environment' && ev.patch?.scopeType === 'collection' && ev.patch?.scopeId) {
       scheduleRefetch(api.dispatch, ev.patch.scopeId);
+      return;
+    }
+    // A variable patch names its environment, which we can map to the
+    // collection holding it. Only a workspace-scoped environment, or one we
+    // don't have loaded, falls back to refetching everything — otherwise one
+    // person editing a variable would refetch every collection on every client.
+    const owning = ev.patch?.environmentId
+      && collectionHoldingEnvironment(api.getState(), ev.patch.environmentId);
+    if (owning) {
+      scheduleRefetch(api.dispatch, owning.backendId);
       return;
     }
     for (const c of teamCollectionsInWorkspace(api.getState(), socketWorkspaceId)) {

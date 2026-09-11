@@ -5,6 +5,7 @@ import { useDispatch } from 'react-redux';
 import Headers from './Headers';
 import Script from './Script';
 import Tests from './Tests';
+import FolderVersions from 'components/FolderSettings/FolderVersions';
 import SettingsConflictBanner from 'components/SettingsConflictBanner';
 import StyledWrapper from './StyledWrapper';
 import Vars from './Vars';
@@ -72,6 +73,9 @@ const FolderSettings = ({ collection, folder }) => {
       case 'docs': {
         return <Documentation collection={collection} folder={folder} />;
       }
+      case 'versions': {
+        return <FolderVersions folder={folder} />;
+      }
     }
   };
 
@@ -110,6 +114,13 @@ const FolderSettings = ({ collection, folder }) => {
             <div className={getTabClassname('docs')} role="tab" data-testid="folder-settings-tab-docs" onClick={() => setTab('docs')}>
               Docs
             </div>
+            {/* Versions read the backend change feed, which a filesystem
+                collection doesn't have. */}
+            {collection?.origin === 'team' && (
+              <div className={getTabClassname('versions')} role="tab" data-testid="folder-settings-tab-versions" onClick={() => setTab('versions')}>
+                Versions
+              </div>
+            )}
           </div>
           {AI_TABS.includes(tab) && (
             <div className="flex items-center gap-2 flex-shrink-0">

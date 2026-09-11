@@ -16,7 +16,9 @@ jest.mock('transport', () => ({
     isAuthenticated: () => true,
     backend: {
       getFolderChildren: jest.fn().mockResolvedValue({ items: [] }),
-      putWorkspaceUiState: jest.fn().mockResolvedValue({})
+      putWorkspaceUiState: jest.fn().mockResolvedValue({}),
+      getCollectionTree: jest.fn().mockResolvedValue({ collection: {}, items: [] }),
+      listCollectionEnvironments: jest.fn().mockResolvedValue({ environments: [] })
     }
   }
 }));
@@ -281,5 +283,71 @@ describe('applyChangeEvent — granular tree sync', () => {
     const types = dispatched.map((a) => a.type);
     expect(types).toContain('collections/applyBackendItemChange');
     expect(types).not.toContain('collections/applyBackendItemMove');
+  });
+});
+
+describe('applyChangeEvent — environment variables', () => {
+  const makeStoreWithEnvs = () => {
+    const dispatched = [];
+    const collections = [
+      { origin: 'team', uid: 'team:c1', backendId: 'c1', workspaceBackendId: 'abc', items: [], environments: [{ uid: 'env-1' }] },
+      { origin: 'team', uid: 'team:c2', backendId: 'c2', workspaceBackendId: 'abc', items: [], environments: [{ uid: 'env-2' }] }
+    ];
+    const store = configureStore({
+      reducer: {
+        workspaces: (state = { workspaces: [{ uid: 'team:abc', type: 'team', backendId: 'abc' }], activeWorkspaceUid: null }, action) =>
+          action.type === setActiveWorkspace.type ? { ...state, activeWorkspaceUid: action.payload } : state,
+        collections: (state = { collections }, action) => {
+          if (action.type.startsWith('collections/')) dispatched.push(action);
+          return state;
+        },
+        backend: (state = { user: { id: 'u1' } }) => state,
+        tabs: (state = { tabs: [], activeTabUid: null }) => state
+      },
+      middleware: (getDefault) => getDefault({ serializableCheck: false }).prepend(backendSyncMiddleware.middleware)
+    });
+    store.dispatch(setActiveWorkspace('team:abc'));
+    return { onEvent: SyncSocket.mock.calls.at(-1)[0].onEvent, dispatched };
+  };
+
+  beforeEach(() => {
+    transport.backend.getCollectionTree.mockResolvedValue({ collection: { id: 'c1', name: 'C' }, items: [] });
+    transport.backend.listCollectionEnvironments.mockResolvedValue({ environments: [] });
+  });
+
+  // One person editing a variable used to refetch every collection every client
+  // had loaded, because the patch didn't say which environment moved.
+  it('refetches only the collection owning the environment', async () => {
+    const { onEvent } = makeStoreWithEnvs();
+    transport.backend.getCollectionTree.mockClear();
+
+    onEvent({
+      entityType: 'environment_variable',
+      entityId: 'v1',
+      op: 'update',
+      patch: { id: 'v1', environmentId: 'env-2', name: 'baseUrl' }
+    });
+
+    await new Promise((r) => setTimeout(r, 350));
+    const fetched = transport.backend.getCollectionTree.mock.calls.map(([id]) => id);
+    expect(fetched).toEqual(['c2']);
+  });
+
+  // A workspace-scoped environment belongs to no collection, so there is
+  // nothing narrower to refetch.
+  it('falls back to every loaded collection when the environment is not one of theirs', async () => {
+    const { onEvent } = makeStoreWithEnvs();
+    transport.backend.getCollectionTree.mockClear();
+
+    onEvent({
+      entityType: 'environment_variable',
+      entityId: 'v9',
+      op: 'update',
+      patch: { id: 'v9', environmentId: 'env-workspace-scoped', name: 'token' }
+    });
+
+    await new Promise((r) => setTimeout(r, 350));
+    const fetched = transport.backend.getCollectionTree.mock.calls.map(([id]) => id).sort();
+    expect(fetched).toEqual(['c1', 'c2']);
   });
 });

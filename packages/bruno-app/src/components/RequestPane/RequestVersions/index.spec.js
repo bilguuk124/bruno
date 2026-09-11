@@ -86,3 +86,38 @@ it('selecting two versions diffs them against each other', async () => {
   expect(diff).toHaveTextContent('v3');
   expect(diff).not.toHaveTextContent('Current');
 });
+
+it('describes a version that collapsed several saves', async () => {
+  backend.getRequestHistory.mockResolvedValue({
+    versions: [
+      {
+        seq: 9,
+        op: 'update',
+        revision: 4,
+        occurredAt: new Date(Date.now() - 60_000).toISOString(),
+        startedAt: new Date(Date.now() - 300_000).toISOString(),
+        edits: 12,
+        actorName: 'Ada',
+        snapshot: { method: 'GET', url: '/v2', spec: {} }
+      },
+      {
+        seq: 3,
+        op: 'create',
+        revision: 1,
+        occurredAt: new Date(Date.now() - 900_000).toISOString(),
+        startedAt: new Date(Date.now() - 900_000).toISOString(),
+        edits: 1,
+        actorName: 'Ada',
+        snapshot: { method: 'GET', url: '/v1', spec: {} }
+      }
+    ]
+  });
+
+  renderIt();
+
+  // A sitting of 12 autosaves reads as one version that says so, rather than
+  // twelve rows a minute apart.
+  expect(await screen.findByText('12 edits over 4m')).toBeInTheDocument();
+  // A single-save version says nothing extra.
+  expect(screen.queryByText('1 edits')).not.toBeInTheDocument();
+});

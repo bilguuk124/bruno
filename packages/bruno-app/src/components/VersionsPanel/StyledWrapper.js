@@ -70,6 +70,12 @@ const StyledWrapper = styled.div`
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* "12 edits over 4m" — only present when a version collapsed several saves. */
+  .edits {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    color: ${(props) => props.theme.colors?.text?.muted || props.theme.text};
+  }
   .when {
     flex-shrink: 0;
     color: ${(props) => props.theme.colors?.text?.muted || props.theme.text};

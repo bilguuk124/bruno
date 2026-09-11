@@ -11,6 +11,7 @@ import Script from './Script';
 import Test from './Tests';
 import Presets from './Presets';
 import Protobuf from './Protobuf';
+import CollectionVersions from 'components/CollectionSettings/CollectionVersions';
 import SettingsConflictBanner from 'components/SettingsConflictBanner';
 import StyledWrapper from './StyledWrapper';
 import Vars from './Vars/index';
@@ -102,6 +103,9 @@ const CollectionSettings = ({ collection }) => {
       case 'protobuf': {
         return <Protobuf collection={collection} />;
       }
+      case 'versions': {
+        return <CollectionVersions collection={collection} />;
+      }
     }
   };
 
@@ -155,6 +159,13 @@ const CollectionSettings = ({ collection }) => {
             Protobuf
             {protobufConfig.protoFiles && protobufConfig.protoFiles.length > 0 && <StatusDot />}
           </div>
+          {/* Versions read the backend change feed, which a filesystem
+              collection doesn't have. */}
+          {collection?.origin === 'team' && (
+            <div className={getTabClassname('versions')} role="tab" data-testid="collection-settings-tab-versions" onClick={() => setTab('versions')}>
+              Versions
+            </div>
+          )}
         </div>
         {AI_TABS.includes(tab) && (
           <div className="flex items-center gap-2 flex-shrink-0">
