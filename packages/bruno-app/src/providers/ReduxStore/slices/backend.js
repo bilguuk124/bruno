@@ -16,6 +16,7 @@ import {
   collectionLoadedFromTree,
   applyBackendFolderChildren,
   expandCollection,
+  expandItem,
   selectEnvironment
 } from 'providers/ReduxStore/slices/collections';
 import { addTab, focusTab, clearActiveTab, closeAllCollectionTabs } from 'providers/ReduxStore/slices/tabs';
@@ -537,6 +538,39 @@ export const loadTeamFolderChildren = (collectionUid, folderUid) => async (dispa
   } finally {
     foldersLoadingChildren.delete(folderUid);
   }
+};
+
+/**
+ * Bring a deep team item into view in the sidebar.
+ *
+ * A workspace-search hit can point at a request the renderer has never seen —
+ * team collections mount shallow, so every folder between the root and the hit
+ * may still be an unloaded stub. Walk the hit's ancestor chain top-down,
+ * fetching each folder's children *before* expanding it so the next hop exists
+ * by the time we get there.
+ *
+ * `path` is the search hit's `path`: ancestor folders, root-first. Stops
+ * quietly if a folder has been moved or deleted upstream since the search ran.
+ *
+ * Returns the live `itemUid` item once it is loaded, so the caller doesn't have
+ * to re-read a store it has a stale closure over. Undefined if it never showed.
+ */
+export const revealTeamItem = ({ collectionUid, itemUid, path = [] }) => async (dispatch, getState) => {
+  const collectionNow = () => getState().collections.collections.find((c) => c.uid === collectionUid);
+  if (!collectionNow()) return undefined;
+
+  dispatch(expandCollection(collectionUid));
+
+  for (const segment of path) {
+    const folder = findItemInCollection(collectionNow(), segment.id);
+    if (!folder) break;
+    if (folder.childrenLoaded === false) {
+      await dispatch(loadTeamFolderChildren(collectionUid, segment.id));
+    }
+    dispatch(expandItem({ collectionUid, itemUid: segment.id }));
+  }
+
+  return itemUid ? findItemInCollection(collectionNow(), itemUid) : undefined;
 };
 
 /**

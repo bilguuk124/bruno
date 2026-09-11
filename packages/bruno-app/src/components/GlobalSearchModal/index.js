@@ -12,9 +12,12 @@ import { flattenItems, isItemARequest, isItemAFolder, findParentItemInCollection
 import { addTab, focusTab } from 'providers/ReduxStore/slices/tabs';
 import { toggleCollectionItem, toggleCollection } from 'providers/ReduxStore/slices/collections';
 import { mountCollection } from 'providers/ReduxStore/slices/collections/actions';
+import { revealTeamItem } from 'providers/ReduxStore/slices/backend';
 import { getDefaultRequestPaneTab } from 'utils/collections';
 import { normalizePath } from 'utils/common/path';
+import transport from 'transport';
 import { normalizeQuery, isValidQuery, highlightText, sortResults, getTypeLabel, getItemPath } from './utils/searchUtils';
+import { teamHitsToResults } from './utils/teamSearch';
 import { SEARCH_TYPES, MATCH_TYPES, SEARCH_CONFIG, DOCUMENTATION_RESULT } from './constants';
 import StyledWrapper from './StyledWrapper';
 
@@ -22,9 +25,11 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const inputRef = useRef(null);
   const resultsRef = useRef(null);
   const debounceTimeoutRef = useRef(null);
+  const searchAbortRef = useRef(null);
   const dispatch = useDispatch();
 
   const allCollections = useSelector((state) => state.collections.collections);
@@ -33,13 +38,24 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
 
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
 
+  // A team workspace is searched on the backend: its collections mount shallow,
+  // so most of the tree was never fetched into Redux to scan.
+  const teamWorkspaceId = activeWorkspace?.type === 'team' ? activeWorkspace.backendId : null;
+
   const collections = useMemo(() => {
     if (!activeWorkspace) return allCollections;
 
-    const workspacePaths = new Set(
-      activeWorkspace.collections?.map((wc) => normalizePath(wc.path)) || []
+    // A workspace's collection entries are keyed by uid (team) or by path
+    // (local filesystem); match either, or a team workspace finds nothing.
+    const workspaceUids = new Set();
+    const workspacePaths = new Set();
+    (activeWorkspace.collections || []).forEach((wc) => {
+      if (wc.uid) workspaceUids.add(wc.uid);
+      if (wc.path) workspacePaths.add(normalizePath(wc.path));
+    });
+    return allCollections.filter(
+      (c) => workspaceUids.has(c.uid) || (c.pathname && workspacePaths.has(normalizePath(c.pathname)))
     );
-    return allCollections.filter((c) => workspacePaths.has(normalizePath(c.pathname)));
   }, [activeWorkspace, allCollections, workspaces]);
 
   const createCollectionResults = () => {
@@ -133,16 +149,60 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
     return results;
   };
 
+  // The backend needs two characters to rank usefully; below that a substring
+  // query matches nearly everything.
+  const TEAM_MIN_QUERY_LENGTH = 2;
+
+  const searchTeamWorkspace = async (normalizedQuery) => {
+    // Abandon an older keystroke's request so results can't arrive out of order.
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+    setSearching(true);
+
+    try {
+      const res = await transport.backend.searchWorkspace(
+        teamWorkspaceId,
+        { q: normalizedQuery, limit: 50 },
+        { signal: controller.signal }
+      );
+      // The backend ranks across requests, folders and collections together —
+      // keep its order rather than re-sorting on the partial local view.
+      setResults(teamHitsToResults(res?.results || []));
+      setSelectedIndex(0);
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      setResults([]);
+    } finally {
+      if (searchAbortRef.current === controller) {
+        searchAbortRef.current = null;
+        setSearching(false);
+      }
+    }
+  };
+
   const performSearch = (searchQuery) => {
     const normalizedQuery = normalizeQuery(searchQuery);
 
     if (!normalizedQuery) {
+      searchAbortRef.current?.abort();
+      searchAbortRef.current = null;
+      setSearching(false);
       setResults(createCollectionResults());
       return;
     }
 
     if (!isValidQuery(normalizedQuery)) {
       setResults([]);
+      return;
+    }
+
+    if (teamWorkspaceId) {
+      if (normalizedQuery.length < TEAM_MIN_QUERY_LENGTH) {
+        setResults([]);
+        return;
+      }
+      searchTeamWorkspace(normalizedQuery);
       return;
     }
 
@@ -170,7 +230,7 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
     debounceTimeoutRef.current = setTimeout(() => {
       performSearch(searchQuery);
     }, SEARCH_CONFIG.DEBOUNCE_DELAY);
-  }, [collections]); // Depend on collections to recreate when they change
+  }, [collections, teamWorkspaceId]); // Recreate when the searched scope changes
 
   const expandItemPath = (result) => {
     const collection = collections.find((c) => c.uid === result.collectionUid);
@@ -245,7 +305,7 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
     if (handler) handler();
   };
 
-  const handleResultSelection = (result) => {
+  const handleResultSelection = async (result) => {
     const targetCollection = collections.find((c) => c.uid === result.collectionUid);
     ensureCollectionIsMounted(targetCollection);
 
@@ -255,7 +315,21 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
       return;
     }
 
-    expandItemPath(result);
+    // Prefer the real item once the tree is loaded — the one synthesized from a
+    // search hit carries no body or params to default the request pane with.
+    let item = result.item;
+    if (result.teamHit) {
+      // The hit may sit inside folders that are still unloaded stubs; load and
+      // expand the way down before opening it.
+      const loaded = await dispatch(revealTeamItem({
+        collectionUid: result.collectionUid,
+        itemUid: result.item.uid,
+        path: result.teamHit.path
+      }));
+      if (loaded) item = loaded;
+    } else {
+      expandItemPath(result);
+    }
 
     if (result.type === SEARCH_TYPES.REQUEST) {
       const existingTab = tabs.find((tab) => tab.uid === result.item.uid);
@@ -266,9 +340,9 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
         dispatch(addTab({
           uid: result.item.uid,
           collectionUid: result.collectionUid,
-          requestPaneTab: getDefaultRequestPaneTab(result.item),
-          type: result.item.type,
-          pathname: result.item.pathname
+          requestPaneTab: getDefaultRequestPaneTab(item),
+          type: item.type,
+          pathname: item.pathname
         }));
       }
     } else if (result.type === SEARCH_TYPES.FOLDER) {
@@ -306,9 +380,12 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = null;
 
     setQuery('');
     setResults([]);
+    setSearching(false);
   };
 
   // Initialize modal when opened
@@ -325,6 +402,9 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
+      searchAbortRef.current?.abort();
+      searchAbortRef.current = null;
+      setSearching(false);
     }
   }, [isOpen]);
 
@@ -345,6 +425,7 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
+      searchAbortRef.current?.abort();
     };
   }, []);
 
@@ -426,14 +507,23 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
             role="listbox"
             aria-label="Search results"
           >
-            {results.length === 0 && query ? (
+            {searching && results.length === 0 ? (
+              <div className="empty-state">
+                <p>Searching {activeWorkspace?.name || 'the workspace'}…</p>
+              </div>
+            ) : results.length === 0 && query ? (
               <div className="no-results">
                 <p>
                   No results found for "{query}".
-                  <br />
-                  <span className="block mt-2">
-                    The item might not exist yet, or its collection isn’t mounted. Press <strong>Enter</strong> here (or open it from the sidebar) to mount the collection automatically.
-                  </span>
+                  {teamWorkspaceId ? (
+                    <span className="block mt-2">
+                      Every collection in this workspace was searched, including folders you haven’t opened.
+                    </span>
+                  ) : (
+                    <span className="block mt-2">
+                      The item might not exist yet, or its collection isn’t mounted. Press <strong>Enter</strong> here (or open it from the sidebar) to mount the collection automatically.
+                    </span>
+                  )}
                 </p>
               </div>
             ) : results.length === 0 ? (

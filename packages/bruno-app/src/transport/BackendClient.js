@@ -217,6 +217,24 @@ export default class BackendClient {
     return this.get(`/folders/${folderId}/children`);
   }
 
+  /**
+   * Search the whole workspace server-side. The renderer can't do this itself
+   * for a team workspace — collections mount shallow, so most of the tree was
+   * never fetched. `signal` lets a newer keystroke abort an in-flight search.
+   *
+   * `types` is an array of 'request' | 'folder' | 'collection'.
+   */
+  searchWorkspace(workspaceId, { q, types, collection, method, tag, limit } = {}, { signal } = {}) {
+    const qs = new URLSearchParams();
+    if (q) qs.set('q', q);
+    (types || []).forEach((t) => qs.append('type', t));
+    if (collection) qs.set('collection', collection);
+    if (method) qs.set('method', method);
+    if (tag) qs.set('tag', tag);
+    if (limit) qs.set('limit', String(limit));
+    return this.get(`/workspaces/${workspaceId}/search?${qs}`, { signal });
+  }
+
   updateCollection(collectionId, patch, revision) {
     return this.patch(`/collections/${collectionId}`, patch, { ifMatch: revision });
   }

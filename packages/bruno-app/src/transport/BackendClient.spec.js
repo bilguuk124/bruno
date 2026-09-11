@@ -126,3 +126,39 @@ it('wraps a network failure as a status-0 BackendError', async () => {
   expect(err).toBeInstanceOf(BackendError);
   expect(err.status).toBe(0);
 });
+
+it('builds a workspace search query and forwards the abort signal', async () => {
+  global.fetch.mockReturnValue(jsonResponse(200, { results: [] }));
+  const controller = new AbortController();
+
+  await client.searchWorkspace(
+    'ws1',
+    { q: 'v2/orders', types: ['request', 'folder'], method: 'GET', tag: 'smoke', limit: 25 },
+    { signal: controller.signal }
+  );
+
+  const [url, init] = global.fetch.mock.calls[0];
+  const parsed = new URL(url);
+  expect(parsed.pathname).toBe('/api/v1/workspaces/ws1/search');
+  expect(parsed.searchParams.get('q')).toBe('v2/orders');
+  expect(parsed.searchParams.getAll('type')).toEqual(['request', 'folder']);
+  expect(parsed.searchParams.get('method')).toBe('GET');
+  expect(parsed.searchParams.get('tag')).toBe('smoke');
+  expect(parsed.searchParams.get('limit')).toBe('25');
+  expect(init.signal).toBe(controller.signal);
+});
+
+it('omits unset search filters', async () => {
+  global.fetch.mockReturnValue(jsonResponse(200, { results: [] }));
+  await client.searchWorkspace('ws1', { q: 'orders' });
+  const parsed = new URL(global.fetch.mock.calls[0][0]);
+  expect(parsed.search).toBe('?q=orders');
+});
+
+it('rethrows an aborted search rather than wrapping it', async () => {
+  const abort = new Error('aborted');
+  abort.name = 'AbortError';
+  global.fetch.mockRejectedValue(abort);
+  const err = await client.searchWorkspace('ws1', { q: 'orders' }).catch((e) => e);
+  expect(err.name).toBe('AbortError');
+});
