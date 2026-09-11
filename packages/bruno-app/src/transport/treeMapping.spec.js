@@ -5,8 +5,6 @@ import {
   requestPatchBody,
   backendEnvToClientEnv,
   backendVarToClientVar,
-  envVarCreateBody,
-  envVarPatchBody,
   brunoConfigToSettings
 } from './treeMapping';
 
@@ -214,27 +212,7 @@ describe('backendVarToClientVar', () => {
 });
 
 describe('env variable bodies', () => {
-  it('envVarCreateBody nulls an empty value and maps secret/dataType', () => {
-    expect(envVarCreateBody({ name: 'k', value: '', secret: true, dataType: 'string', enabled: true })).toEqual({
-      name: 'k',
-      enabled: true,
-      dataType: 'text',
-      description: null,
-      isSecret: true,
-      value: null
-    });
-  });
 
-  it('envVarPatchBody omits value for an untouched secret', () => {
-    const body = envVarPatchBody({ name: 'k', value: '', secret: true }, { valueChanged: false });
-    expect(body).not.toHaveProperty('value');
-    expect(body).toMatchObject({ name: 'k', isSecret: true });
-  });
-
-  it('envVarPatchBody sends value for a non-secret and for a changed secret', () => {
-    expect(envVarPatchBody({ name: 'k', value: 'v', secret: false }, { valueChanged: false }).value).toBe('v');
-    expect(envVarPatchBody({ name: 'k', value: 'new', secret: true }, { valueChanged: true }).value).toBe('new');
-  });
 });
 
 describe('requestPatchBody', () => {

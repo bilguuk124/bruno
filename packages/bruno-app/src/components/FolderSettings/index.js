@@ -5,6 +5,7 @@ import { useDispatch } from 'react-redux';
 import Headers from './Headers';
 import Script from './Script';
 import Tests from './Tests';
+import SettingsConflictBanner from 'components/SettingsConflictBanner';
 import StyledWrapper from './StyledWrapper';
 import Vars from './Vars';
 import Documentation from './Documentation';
@@ -83,6 +84,7 @@ const FolderSettings = ({ collection, folder }) => {
   return (
     <StyledWrapper className="flex flex-col h-full overflow-auto">
       <div className="flex flex-col h-full relative px-4 py-4">
+        <SettingsConflictBanner conflict={folder.conflict} collectionUid={collection.uid} folderUid={folder.uid} />
         <div className="flex items-start justify-between gap-4" data-testid="settings-tab-bar">
           <div className="flex flex-wrap items-center tabs" role="tablist">
             <div className={getTabClassname('headers')} role="tab" data-testid="folder-settings-tab-headers" onClick={() => setTab('headers')}>

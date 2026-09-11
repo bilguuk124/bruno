@@ -115,8 +115,6 @@ export const changePatchToItem = (patch) => ({
 const dataTypeToClient = (t) => (t === 'text' ? 'string' : t || null);
 const dataTypeToBackend = (t) => (!t || t === 'string' ? 'text' : t);
 
-const emptyToNull = (v) => (v === undefined || v === null || v === '' ? null : String(v));
-
 /**
  * One backend variable -> Bruno's env-var shape. A secret's value is masked
  * ('' with `secret: true`) unless `keepValue` carries a plaintext the caller
@@ -133,6 +131,26 @@ export const backendVarToClientVar = (v, keepValue) => ({
   description: v.description ?? null,
   revision: v.revision
 });
+
+/**
+ * Bruno's env-var shape -> one entry of a PUT /environments/:id/variables set.
+ *
+ * `uid` becomes `id`, and a row without one is a create. `value` is omitted
+ * entirely for a secret the user didn't retype: the editor only ever holds a
+ * mask for those, and sending that mask back would overwrite the real value.
+ */
+export const clientVarToDesiredVar = (v, { valueChanged = true } = {}) => {
+  const desired = {
+    name: (v.name || '').trim(),
+    enabled: v.enabled !== false,
+    dataType: dataTypeToBackend(v.dataType),
+    description: v.description ?? null,
+    isSecret: Boolean(v.secret)
+  };
+  if (v.uid) desired.id = v.uid;
+  if (!v.secret || valueChanged) desired.value = String(v.value ?? '');
+  return desired;
+};
 
 /**
  * One backend environment (from GET /environments/:id or the list-with-variables
@@ -177,35 +195,6 @@ export const brunoConfigToSettings = (brunoConfig = {}) => {
     if (brunoConfig[key] !== undefined) settings[key] = brunoConfig[key];
   }
   return settings;
-};
-
-/** A Bruno env variable -> the backend POST /environments/:id/variables body. */
-export const envVarCreateBody = (v) => ({
-  name: v.name,
-  enabled: v.enabled !== false,
-  dataType: dataTypeToBackend(v.dataType),
-  description: v.description || null,
-  isSecret: Boolean(v.secret),
-  value: emptyToNull(v.value)
-});
-
-/**
- * A Bruno env variable -> the backend PATCH /variables/:id body. A secret whose
- * value is still the masked placeholder is left untouched (no `value` key), so
- * editing a sibling variable never wipes a stored secret.
- */
-export const envVarPatchBody = (v, { valueChanged }) => {
-  const body = {
-    name: v.name,
-    enabled: v.enabled !== false,
-    dataType: dataTypeToBackend(v.dataType),
-    description: v.description || null,
-    isSecret: Boolean(v.secret)
-  };
-  if (valueChanged || !v.secret) {
-    body.value = emptyToNull(v.value) ?? '';
-  }
-  return body;
 };
 
 /** One Bruno item -> a backend node (for /import and POST .../requests). */

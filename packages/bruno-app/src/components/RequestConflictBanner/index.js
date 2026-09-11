@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDispatch } from 'react-redux';
-import { IconAlertTriangle } from '@tabler/icons';
 import Button from 'ui/Button';
+import ConflictBanner from 'ui/ConflictBanner';
 import {
   resolveConflictOverwrite,
   resolveConflictTakeTheirs,
@@ -10,7 +10,6 @@ import {
 } from 'providers/ReduxStore/slices/collections/actions';
 import { deleteRequestDraft } from 'providers/ReduxStore/slices/collections';
 import { closeTabs } from 'providers/ReduxStore/slices/tabs';
-import StyledWrapper from './StyledWrapper';
 
 const relativeTime = (iso) => {
   if (!iso) return '';
@@ -32,59 +31,61 @@ const RequestConflictBanner = ({ item, collectionUid }) => {
 
   if (conflict.kind === 'deleted') {
     return (
-      <StyledWrapper>
-        <IconAlertTriangle size={16} className="icon" />
-        <span className="message">This request was deleted on the server.</span>
-        <div className="actions">
-          <Button size="xs" onClick={() => dispatch(resolveConflictRecreate(item.uid, collectionUid))}>
-            Recreate with my changes
-          </Button>
-          <Button
-            size="xs"
-            color="secondary"
-            variant="outline"
-            onClick={() => {
-              dispatch(closeTabs({ tabUids: [item.uid] }));
-              dispatch(deleteRequestDraft({ itemUid: item.uid, collectionUid }));
-            }}
-          >
-            Discard
-          </Button>
-        </div>
-      </StyledWrapper>
+      <ConflictBanner
+        actions={(
+          <>
+            <Button size="xs" onClick={() => dispatch(resolveConflictRecreate(item.uid, collectionUid))}>
+              Recreate with my changes
+            </Button>
+            <Button
+              size="xs"
+              color="secondary"
+              variant="outline"
+              onClick={() => {
+                dispatch(closeTabs({ tabUids: [item.uid] }));
+                dispatch(deleteRequestDraft({ itemUid: item.uid, collectionUid }));
+              }}
+            >
+              Discard
+            </Button>
+          </>
+        )}
+      >
+        This request was deleted on the server.
+      </ConflictBanner>
     );
   }
 
   const who = conflict.updatedByName ? ` by ${conflict.updatedByName}` : '';
   return (
-    <StyledWrapper>
-      <IconAlertTriangle size={16} className="icon" />
-      <span className="message">
-        Changed on the server{who}
-        {relativeTime(conflict.at)}. Your unsaved edits are still here.
-      </span>
-      <div className="actions">
-        <Button size="xs" onClick={() => dispatch(resolveConflictOverwrite(item.uid, collectionUid))}>
-          Overwrite server
-        </Button>
-        <Button
-          size="xs"
-          color="secondary"
-          variant="outline"
-          onClick={() => dispatch(resolveConflictTakeTheirs(item.uid, collectionUid))}
-        >
-          Discard mine &amp; reload
-        </Button>
-        <Button
-          size="xs"
-          color="secondary"
-          variant="ghost"
-          onClick={() => dispatch(dismissConflict(item.uid, collectionUid))}
-        >
-          Keep editing
-        </Button>
-      </div>
-    </StyledWrapper>
+    <ConflictBanner
+      actions={(
+        <>
+          <Button size="xs" onClick={() => dispatch(resolveConflictOverwrite(item.uid, collectionUid))}>
+            Overwrite server
+          </Button>
+          <Button
+            size="xs"
+            color="secondary"
+            variant="outline"
+            onClick={() => dispatch(resolveConflictTakeTheirs(item.uid, collectionUid))}
+          >
+            Discard mine &amp; reload
+          </Button>
+          <Button
+            size="xs"
+            color="secondary"
+            variant="ghost"
+            onClick={() => dispatch(dismissConflict(item.uid, collectionUid))}
+          >
+            Keep editing
+          </Button>
+        </>
+      )}
+    >
+      Changed on the server{who}
+      {relativeTime(conflict.at)}. Your unsaved edits are still here.
+    </ConflictBanner>
   );
 };
 

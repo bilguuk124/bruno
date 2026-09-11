@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import CopyEnvironment from 'components/Environments/EnvironmentSettings/CopyEnvironment';
 import DeleteEnvironment from 'components/Environments/EnvironmentSettings/DeleteEnvironment';
 import EnvironmentVariables from './EnvironmentVariables';
+import EnvironmentConflictBanner from 'components/EnvironmentConflictBanner';
 import ColorPicker from 'components/ColorPicker';
 import ActionIcon from 'ui/ActionIcon';
 import ResponsiveTabs from 'ui/ResponsiveTabs';
@@ -276,6 +277,7 @@ const EnvironmentDetails = ({ environment, setIsModified, collection, searchQuer
       </div>
 
       <div className="content">
+        <EnvironmentConflictBanner environment={environment} collectionUid={collection.uid} />
         <EnvironmentVariables
           environment={environment}
           setIsModified={setIsModified}

@@ -11,6 +11,7 @@ import Script from './Script';
 import Test from './Tests';
 import Presets from './Presets';
 import Protobuf from './Protobuf';
+import SettingsConflictBanner from 'components/SettingsConflictBanner';
 import StyledWrapper from './StyledWrapper';
 import Vars from './Vars/index';
 import StatusDot from 'components/StatusDot';
@@ -112,6 +113,7 @@ const CollectionSettings = ({ collection }) => {
 
   return (
     <StyledWrapper className="flex flex-col h-full relative px-4 py-4 overflow-hidden">
+      <SettingsConflictBanner conflict={collection.conflict} collectionUid={collection.uid} />
       <div className="flex items-start justify-between gap-4" data-testid="settings-tab-bar">
         <div className="flex flex-wrap items-center tabs" role="tablist">
           <div className={getTabClassname('overview')} role="tab" data-testid="collection-settings-tab-overview" onClick={() => setTab('overview')}>

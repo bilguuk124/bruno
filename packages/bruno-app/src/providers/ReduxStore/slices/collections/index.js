@@ -3854,6 +3854,46 @@ export const collectionsSlice = createSlice({
       if (item) delete item.conflict;
     },
 
+    /** A team collection whose settings save lost a revision race. Kept on the
+     *  collection rather than an item, since collection settings have no item. */
+    setCollectionConflict: (state, action) => {
+      const { collectionUid, conflict } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      if (collection) collection.conflict = conflict;
+    },
+
+    clearCollectionConflict: (state, action) => {
+      const collection = findCollectionByUid(state.collections, action.payload.collectionUid);
+      if (collection) delete collection.conflict;
+    },
+
+    /** A team environment whose save lost a revision race. `conflict.server`
+     *  is the set the server holds; `conflict.mine` is what the user tried to
+     *  save, kept so "keep mine" can retry it rather than asking them to retype
+     *  it. */
+    setEnvironmentConflict: (state, action) => {
+      const { collectionUid, environmentUid, conflict } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      const environment = collection ? findEnvironmentInCollection(collection, environmentUid) : null;
+      if (environment) environment.conflict = conflict;
+    },
+
+    clearEnvironmentConflict: (state, action) => {
+      const { collectionUid, environmentUid } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      const environment = collection ? findEnvironmentInCollection(collection, environmentUid) : null;
+      if (environment) delete environment.conflict;
+    },
+
+    /** The environment's revision is the concurrency token for its whole
+     *  variable set, so every set write has to stamp it back. */
+    stampEnvironmentRevision: (state, action) => {
+      const { collectionUid, environmentUid, revision } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      const environment = collection ? findEnvironmentInCollection(collection, environmentUid) : null;
+      if (environment && revision !== undefined) environment.revision = revision;
+    },
+
     /** Post-write bookkeeping for a team collection item: stamp the server
      * revision and record (or clear) a save error. */
     setItemSyncState: (state, action) => {
@@ -4316,6 +4356,11 @@ export const {
   setItemSyncState,
   setItemConflict,
   clearItemConflict,
+  setCollectionConflict,
+  clearCollectionConflict,
+  setEnvironmentConflict,
+  clearEnvironmentConflict,
+  stampEnvironmentRevision,
   scriptEnvironmentUpdateEvent,
   runtimeVariablesUpdateEvent,
   processEnvUpdateEvent,

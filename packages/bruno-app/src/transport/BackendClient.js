@@ -325,16 +325,14 @@ export default class BackendClient {
     return this.post(`/environments/${environmentId}/reveal`);
   }
 
-  createEnvironmentVariable(environmentId, body) {
-    return this.post(`/environments/${environmentId}/variables`, body);
-  }
-
-  updateEnvironmentVariable(variableId, patch, revision) {
-    return this.patch(`/variables/${variableId}`, patch, { ifMatch: revision });
-  }
-
-  deleteEnvironmentVariable(variableId) {
-    return this.del(`/variables/${variableId}`);
+  /**
+   * Replace an environment's whole variable set in one atomic write.
+   * `If-Match` is the environment's revision, not any variable's: the set is
+   * the unit of editing, so it conflicts as a unit. A 412's body carries the
+   * server's current environment under `current`.
+   */
+  replaceEnvironmentVariables(environmentId, variables, revision) {
+    return this.put(`/environments/${environmentId}/variables`, { variables }, { ifMatch: revision });
   }
 
   // --- user preferences ---

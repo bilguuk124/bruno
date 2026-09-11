@@ -687,7 +687,11 @@ const EnvironmentVariablesTable = ({
     const persistedVariables = orderVarsBySecret([...activeCurrent, ...otherSaved]);
 
     onSave(cloneDeep(persistedVariables))
-      .then(() => {
+      .then((result) => {
+        // A team save can come back unsaved: the environment changed on the
+        // server and the conflict banner now owns the decision. Leave the
+        // user's rows exactly as they are so "keep mine" still has them.
+        if (result?.conflict) return;
         toast.success('Changes saved successfully');
 
         // Preserve unsaved edits on the other tab across the post-save reinit via the
@@ -801,7 +805,11 @@ const EnvironmentVariablesTable = ({
     }
 
     onSave(cloneDeep(persistedVariables))
-      .then(() => {
+      .then((result) => {
+        // A team save can come back unsaved: the environment changed on the
+        // server and the conflict banner now owns the decision. Leave the
+        // user's rows exactly as they are so "keep mine" still has them.
+        if (result?.conflict) return;
         toast.success('Changes saved successfully');
         onDraftClear();
 

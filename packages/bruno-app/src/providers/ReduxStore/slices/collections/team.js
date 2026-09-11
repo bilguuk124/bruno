@@ -16,9 +16,9 @@ import {
   requestCreateBody,
   folderCreateBody,
   changePatchToItem,
-  envVarCreateBody,
-  envVarPatchBody,
+  clientVarToDesiredVar,
   backendVarToClientVar,
+  backendEnvToClientEnv,
   brunoConfigToSettings
 } from 'transport/treeMapping';
 import { buildHistoryEntry, collectSecretValues, captureResponseBody } from 'transport/history';
@@ -36,8 +36,15 @@ import {
   selectEnvironment as applyEnvironmentSelection,
   updateEnvironmentSecrets,
   saveEnvironment as applySavedEnvironment,
+  setCollectionConflict,
+  clearCollectionConflict,
+  setEnvironmentConflict,
+  clearEnvironmentConflict,
+  stampEnvironmentRevision,
   saveCollectionDraft,
   saveFolderDraft,
+  deleteFolderDraft,
+  deleteCollectionDraft,
   renameCollection as applyCollectionName
 } from 'providers/ReduxStore/slices/collections';
 import { refetchTeamCollectionTree } from 'providers/ReduxStore/slices/backend';
@@ -456,54 +463,143 @@ export const teamUpdateEnvironmentColor = (environmentUid, color, collectionUid)
   await dispatch(refetchTeamCollectionTree(backendId));
 };
 
-const sameEnvVarMeta = (a, b) =>
-  a.name === b.name
-  && (a.enabled !== false) === (b.enabled !== false)
-  && Boolean(a.secret) === Boolean(b.secret)
-  && (a.dataType || null) === (b.dataType || null)
-  && (a.description || null) === (b.description || null);
-
 /**
- * Persist an environment's full variable set. Diffs against the loaded set:
- * changed rows PATCH, new rows POST, removed rows DELETE. A secret's value is
- * only sent when it actually changed, so editing one row can't wipe another's
- * stored secret. The reconciled set (server ids + revisions, local plaintext
- * kept for secrets) is written straight back — no refetch, so autosave doesn't
- * churn the editor mid-edit.
+ * Persist an environment's full variable set in one atomic write.
+ *
+ * The whole table goes to PUT /environments/:id/variables, which applies it in
+ * one transaction: rows present are written, rows absent are deleted, and
+ * either all of it lands or none of it does. This used to be a loop of
+ * per-variable calls, where a conflict on the third row left the first two
+ * saved, the rest not, and the client with no idea which — a half-written
+ * environment nothing in the editor could repair.
+ *
+ * A secret the user didn't retype sends no value at all; the editor only holds
+ * a mask for those. Local plaintext is kept on the reconciled rows so the
+ * editor doesn't blank out what the user just typed.
  */
 export const teamSaveEnvironment = (variables, environmentUid, collectionUid) => async (dispatch, getState) => {
   const { environment } = teamEnv(getState, collectionUid, environmentUid);
   const baseById = new Map((environment.variables || []).map((v) => [v.uid, v]));
-  const kept = new Set();
-  const reconciled = [];
 
-  for (const v of variables) {
+  const desired = variables.map((v) => {
     const existing = v.uid && baseById.get(v.uid);
-    if (existing) {
-      kept.add(existing.uid);
-      const valueChanged = String(v.value ?? '') !== String(existing.value ?? '');
-      const saved = valueChanged || !sameEnvVarMeta(v, existing)
-        ? await transport.backend.updateEnvironmentVariable(existing.uid, envVarPatchBody(v, { valueChanged }), existing.revision)
-        : null;
-      reconciled.push(saved ? backendVarToClientVar(saved, v.value) : existing);
-    } else {
-      const saved = await transport.backend.createEnvironmentVariable(environmentUid, envVarCreateBody(v));
-      reconciled.push(backendVarToClientVar(saved, v.value));
+    const valueChanged = !existing || String(v.value ?? '') !== String(existing.value ?? '');
+    return clientVarToDesiredVar(v, { valueChanged });
+  });
+
+  let saved;
+  try {
+    saved = await transport.backend.replaceEnvironmentVariables(environmentUid, desired, environment.revision);
+  } catch (err) {
+    if (err.isRevisionConflict) {
+      dispatch(
+        setEnvironmentConflict({
+          collectionUid,
+          environmentUid,
+          conflict: {
+            kind: 'stale',
+            // The 412 carries the server's set, so the banner can offer a
+            // choice instead of sending the user off to refetch and compare.
+            server: err.body?.current ? backendEnvToClientEnv(err.body.current) : null,
+            mine: variables
+          }
+        })
+      );
+      // Resolve with the outcome rather than throwing: a conflict isn't a
+      // failure the caller should report, it's a decision the banner now owns.
+      return { conflict: true };
     }
+    throw err;
   }
 
-  for (const v of environment.variables || []) {
-    if (!kept.has(v.uid)) await transport.backend.deleteEnvironmentVariable(v.uid);
-  }
+  // Carry local plaintext across for secrets the server can only mask.
+  const plaintextByName = new Map(variables.map((v) => [(v.name || '').trim(), v.value]));
+  const reconciled = (saved.variables || []).map((v) =>
+    backendVarToClientVar(v, v.isSecret ? plaintextByName.get(v.name) : undefined)
+  );
 
   dispatch(applySavedEnvironment({ variables: reconciled, environmentUid, collectionUid }));
+  dispatch(stampEnvironmentRevision({ collectionUid, environmentUid, revision: saved.revision }));
+  dispatch(clearEnvironmentConflict({ collectionUid, environmentUid }));
 };
 
-const seedEnvironmentVariables = async (environmentId, variables) => {
-  for (const v of variables || []) {
-    if (!v?.name || !v.name.trim()) continue;
-    await transport.backend.createEnvironmentVariable(environmentId, envVarCreateBody(v));
+/**
+ * Environment conflict — "keep mine": retry the same set against the server's
+ * current revision. Anything a teammate added since is replaced by this set,
+ * which is what "mine" has to mean for a set that also expresses deletions.
+ */
+export const resolveEnvConflictOverwrite = (environmentUid, collectionUid) => async (dispatch, getState) => {
+  const { environment } = teamEnv(getState, collectionUid, environmentUid);
+  const conflict = environment.conflict;
+  if (!conflict || !conflict.mine) return;
+
+  const serverRevision = conflict.server ? conflict.server.revision : environment.revision;
+  const baseById = new Map((conflict.server?.variables || []).map((v) => [v.uid, v]));
+  const desired = conflict.mine.map((v) => {
+    const existing = v.uid && baseById.get(v.uid);
+    const valueChanged = !existing || String(v.value ?? '') !== String(existing.value ?? '');
+    return clientVarToDesiredVar(v, { valueChanged });
+  });
+
+  try {
+    const saved = await transport.backend.replaceEnvironmentVariables(environmentUid, desired, serverRevision);
+    const plaintextByName = new Map(conflict.mine.map((v) => [(v.name || '').trim(), v.value]));
+    const reconciled = (saved.variables || []).map((v) =>
+      backendVarToClientVar(v, v.isSecret ? plaintextByName.get(v.name) : undefined)
+    );
+    dispatch(applySavedEnvironment({ variables: reconciled, environmentUid, collectionUid }));
+    dispatch(stampEnvironmentRevision({ collectionUid, environmentUid, revision: saved.revision }));
+    dispatch(clearEnvironmentConflict({ collectionUid, environmentUid }));
+    toast.success('Your version saved');
+  } catch (err) {
+    if (err.isRevisionConflict) {
+      dispatch(
+        setEnvironmentConflict({
+          collectionUid,
+          environmentUid,
+          conflict: {
+            kind: 'stale',
+            server: err.body?.current ? backendEnvToClientEnv(err.body.current) : null,
+            mine: conflict.mine
+          }
+        })
+      );
+      toast('It changed again on the server', { icon: '⚠️' });
+      return;
+    }
+    toast.error(err.message || 'Could not save');
   }
+};
+
+/** Environment conflict — "take theirs": adopt the server's set, drop mine. */
+export const resolveEnvConflictTakeTheirs = (environmentUid, collectionUid) => async (dispatch, getState) => {
+  const { collection, environment } = teamEnv(getState, collectionUid, environmentUid);
+  const server = environment.conflict && environment.conflict.server;
+
+  if (server) {
+    dispatch(applySavedEnvironment({ variables: server.variables, environmentUid, collectionUid }));
+    dispatch(stampEnvironmentRevision({ collectionUid, environmentUid, revision: server.revision }));
+  } else {
+    await dispatch(refetchTeamCollectionTree(collection.backendId));
+  }
+  dispatch(clearEnvironmentConflict({ collectionUid, environmentUid }));
+  toast.success('Reloaded the server version');
+};
+
+/** Environment conflict — "keep editing": dismiss; the next save re-checks. */
+export const dismissEnvConflict = (environmentUid, collectionUid) => (dispatch) => {
+  dispatch(clearEnvironmentConflict({ collectionUid, environmentUid }));
+};
+
+// A fresh environment's variables go in one write, like every other set save:
+// a copy or import that fails partway should leave an empty environment the
+// user can retry, not a half-populated one they have to inspect.
+const seedEnvironmentVariables = (environmentId, variables) => {
+  const desired = (variables || [])
+    .filter((v) => v?.name && v.name.trim())
+    .map((v) => clientVarToDesiredVar({ ...v, uid: null }));
+  if (desired.length === 0) return Promise.resolve();
+  return transport.backend.replaceEnvironmentVariables(environmentId, desired, 0);
 };
 
 export const teamCopyEnvironment = (name, baseEnvUid, collectionUid) => async (dispatch, getState) => {
@@ -571,13 +667,63 @@ export const teamSaveCollectionRoot = (collectionUid, silent = false) => async (
     if (!silent) toast.success('Collection Settings saved successfully');
   } catch (err) {
     if (err.isRevisionConflict) {
-      await dispatch(refetchTeamCollectionTree(collection.backendId));
-      if (!silent) toast('These settings changed on the server — review and save again', { icon: '⚠️' });
-      return;
+      // Raise it rather than refetching: a refetch writes the server's settings
+      // straight over the ones the user is still editing, and then asks them to
+      // "save again" with nothing left to save.
+      dispatch(
+        setCollectionConflict({
+          collectionUid,
+          conflict: { kind: 'stale', server: err.body?.current || null }
+        })
+      );
+      return { conflict: true };
     }
     if (!silent) toast.error(err.message || 'Failed to save collection settings');
     throw err;
   }
+};
+
+/** Collection settings conflict — "keep mine": retry against the server's revision. */
+export const resolveCollectionSettingsOverwrite = (collectionUid) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  const conflict = collection?.conflict;
+  if (!collection || !conflict) return;
+
+  const revision = conflict.server ? conflict.server.revision : collection.revision;
+  const brunoConfig = collection.draft?.brunoConfig || collection.brunoConfig;
+  try {
+    const updated = await transport.backend.updateCollection(
+      collection.backendId,
+      { rootSpec: transformCollectionRootToSave(collection), settings: brunoConfigToSettings(brunoConfig) },
+      revision
+    );
+    dispatch(saveCollectionDraft({ collectionUid }));
+    stampCollectionRevision(dispatch, collectionUid, updated.revision);
+    dispatch(clearCollectionConflict({ collectionUid }));
+    toast.success('Your settings saved');
+  } catch (err) {
+    if (err.isRevisionConflict) {
+      dispatch(setCollectionConflict({ collectionUid, conflict: { kind: 'stale', server: err.body?.current || null } }));
+      toast('They changed again on the server', { icon: '⚠️' });
+      return;
+    }
+    toast.error(err.message || 'Could not save');
+  }
+};
+
+/** Collection settings conflict — "take theirs": drop the draft, reload. */
+export const resolveCollectionSettingsTakeTheirs = (collectionUid) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (!collection) return;
+  dispatch(deleteCollectionDraft({ collectionUid }));
+  await dispatch(refetchTeamCollectionTree(collection.backendId));
+  dispatch(clearCollectionConflict({ collectionUid }));
+  toast.success('Reloaded the server version');
+};
+
+/** Collection settings conflict — "keep editing". */
+export const dismissCollectionSettingsConflict = (collectionUid) => (dispatch) => {
+  dispatch(clearCollectionConflict({ collectionUid }));
 };
 
 export const teamSaveFolderRoot = (collectionUid, folderUid, silent = false) => async (dispatch, getState) => {
@@ -595,13 +741,60 @@ export const teamSaveFolderRoot = (collectionUid, folderUid, silent = false) => 
     if (!silent) toast.success('Folder Settings saved successfully');
   } catch (err) {
     if (err.isRevisionConflict) {
-      await dispatch(refetchTeamCollectionTree(collection.backendId));
-      if (!silent) toast('This folder changed on the server — review and save again', { icon: '⚠️' });
-      return;
+      dispatch(
+        setItemConflict({
+          collectionUid,
+          itemUid: folderUid,
+          conflict: { kind: 'stale', server: err.body?.current || null }
+        })
+      );
+      return { conflict: true };
     }
     if (!silent) toast.error(err.message || 'Failed to save folder settings');
     throw err;
   }
+};
+
+/** Folder settings conflict — "keep mine": retry against the server's revision. */
+export const resolveFolderSettingsOverwrite = (collectionUid, folderUid) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  const folder = collection && findItemInCollection(collection, folderUid);
+  if (!folder || !folder.conflict) return;
+
+  const revision = folder.conflict.server ? folder.conflict.server.revision : folder.revision;
+  try {
+    const updated = await transport.backend.updateFolder(
+      folderUid,
+      { rootSpec: transformFolderRootToSave(folder) },
+      revision
+    );
+    if (folder.draft) dispatch(saveFolderDraft({ collectionUid, folderUid }));
+    dispatch(setItemSyncState({ collectionUid, itemUid: folderUid, revision: updated.revision, saveError: null }));
+    dispatch(clearItemConflict({ collectionUid, itemUid: folderUid }));
+    toast.success('Your settings saved');
+  } catch (err) {
+    if (err.isRevisionConflict) {
+      dispatch(setItemConflict({ collectionUid, itemUid: folderUid, conflict: { kind: 'stale', server: err.body?.current || null } }));
+      toast('They changed again on the server', { icon: '⚠️' });
+      return;
+    }
+    toast.error(err.message || 'Could not save');
+  }
+};
+
+/** Folder settings conflict — "take theirs": drop the draft, adopt the server's. */
+export const resolveFolderSettingsTakeTheirs = (collectionUid, folderUid) => async (dispatch, getState) => {
+  const collection = findCollectionByUid(getState().collections.collections, collectionUid);
+  if (!collection) return;
+  dispatch(deleteFolderDraft({ collectionUid, folderUid }));
+  await dispatch(refetchTeamCollectionTree(collection.backendId));
+  dispatch(clearItemConflict({ collectionUid, itemUid: folderUid }));
+  toast.success('Reloaded the server version');
+};
+
+/** Folder settings conflict — "keep editing". */
+export const dismissFolderSettingsConflict = (collectionUid, folderUid) => (dispatch) => {
+  dispatch(clearItemConflict({ collectionUid, itemUid: folderUid }));
 };
 
 /**

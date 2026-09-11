@@ -1,5 +1,8 @@
 import styled from 'styled-components';
 
+// Classes are namespaced `conflict-*` rather than using generic names like
+// `.icon` or `.message`: an enclosing StyledWrapper styling the same class wins
+// on injection order, not specificity.
 const StyledWrapper = styled.div`
   display: flex;
   align-items: center;
@@ -12,17 +15,17 @@ const StyledWrapper = styled.div`
   border: 1px solid ${(props) => props.theme.colors?.text?.warning || '#f0ad41'};
   color: ${(props) => props.theme.text};
 
-  .icon {
+  .conflict-icon {
     flex-shrink: 0;
     color: ${(props) => props.theme.colors?.text?.warning || '#f0ad41'};
   }
 
-  .message {
+  .conflict-message {
     flex: 1;
     min-width: 0;
   }
 
-  .actions {
+  .conflict-actions {
     display: flex;
     gap: 0.375rem;
     flex-shrink: 0;
